@@ -10,6 +10,7 @@ from sagashi.config import ConfigError, load_config
 from sagashi.fetcher import is_blocked_url, is_reddit_url
 from sagashi.providers.uruky import UrukyProvider
 from sagashi.reddit import RedditError
+from sagashi.rerank import lexical_score, rerank
 
 
 class TestConfig:
@@ -183,3 +184,63 @@ class TestRedditError:
         """Test that RedditError has a user-friendly message."""
         error = RedditError("Test error message")
         assert str(error) == "Test error message"
+
+
+class TestRerank:
+    """Tests for lexical reranking."""
+
+    def test_title_match_scores_higher_than_body_match(self) -> None:
+        """A query term in the title scores double one in the body."""
+        title_hit = lexical_score("keyboard", "Best Keyboard Guide", "nothing here")
+        body_hit = lexical_score("keyboard", "Some Guide", "keyboard reviews")
+        assert title_hit == pytest.approx(1.0)
+        assert body_hit == pytest.approx(0.5)
+
+    def test_partial_match_scores_proportionally(self) -> None:
+        """Score is normalized by the number of query tokens."""
+        score = lexical_score(
+            "mechanical keyboard", "Keyboard Guide", "mechanical tips"
+        )
+        # one title hit (keyboard=2.0) + one body hit (mechanical=1.0) / 4.0
+        assert score == pytest.approx(0.75)
+
+    def test_no_match_scores_zero(self) -> None:
+        """A result matching nothing scores 0."""
+        assert lexical_score("keyboard", "Cooking", "recipes") == 0.0
+
+    def test_empty_query_scores_zero(self) -> None:
+        """An empty query yields score 0, not a division error."""
+        assert lexical_score("", "anything", "anything") == 0.0
+
+    def test_rerank_sorts_by_relevance(self) -> None:
+        """Results with lexical matches are boosted above non-matches."""
+        results = [
+            {"title": "Cooking pasta", "body": "delicious recipes"},
+            {"title": "Keyboard review", "body": "mechanical switches tested"},
+            {"title": "Best keyboards", "body": "unrelated"},
+        ]
+        ranked = rerank(
+            "mechanical keyboard",
+            results,
+            title_of=lambda r: r["title"],
+            body_of=lambda r: r["body"],
+        )
+        assert ranked[0]["title"] == "Keyboard review"
+        assert ranked[1]["title"] == "Best keyboards"
+        assert ranked[2]["title"] == "Cooking pasta"
+
+    def test_plural_normalization(self) -> None:
+        """Plurals match their singular form symmetrically."""
+        assert lexical_score("keyboard", "Best Keyboards", "") == pytest.approx(1.0)
+        assert lexical_score("keyboards", "Best Keyboard", "") == pytest.approx(1.0)
+
+    def test_rerank_is_stable_on_ties(self) -> None:
+        """Equal scores keep the provider's original order."""
+        results = ["first", "second", "third"]
+        ranked = rerank(
+            "query",
+            results,
+            title_of=lambda r: r,
+            body_of=lambda r: "",
+        )
+        assert ranked == ["first", "second", "third"]

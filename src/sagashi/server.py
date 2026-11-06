@@ -11,6 +11,7 @@ from sagashi.config import Config, ConfigError, load_config
 from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
 from sagashi.providers.uruky import UrukyProvider
+from sagashi.rerank import rerank
 
 
 class CrawlerHolder:
@@ -86,6 +87,14 @@ def build_server() -> FastMCP:
         results = await provider.search(query, recency=recency)
         if not results:
             return "No results found."
+
+        # Lexical rerank: boost results whose title/snippet match the query
+        results = rerank(
+            query,
+            results,
+            title_of=lambda r: r.title,
+            body_of=lambda r: r.snippet,
+        )
 
         lines: list[str] = []
         for result in results:

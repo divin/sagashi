@@ -6,6 +6,7 @@ from asyncpraw import Reddit
 from asyncpraw.models import MoreComments
 
 from sagashi.config import Config, load_config
+from sagashi.rerank import rerank
 
 
 class RedditError(Exception):
@@ -65,6 +66,14 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
 
     if not submissions:
         return "No Reddit results found."
+
+    # Lexical rerank: boost submissions whose title/selftext match the query
+    submissions = rerank(
+        query,
+        submissions,
+        title_of=lambda s: s.title,
+        body_of=lambda s: s.selftext or "",
+    )
 
     lines: list[str] = []
     for submission in submissions:
