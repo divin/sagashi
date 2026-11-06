@@ -1,6 +1,6 @@
 # Sagashi justfile
 
-default = fmt
+default: fmt lint isort
 
 # Format code with ruff (replaces black)
 fmt:

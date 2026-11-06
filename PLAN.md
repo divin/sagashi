@@ -34,11 +34,11 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 2: configuration and the provider seam
 
-**Status: not started.**
+**Status: complete.**
 
 - Typed config loaded from the environment: `SEARCH_PROVIDER` (default `uruky`), `URUKY_TOKEN`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `FETCH_MAX_CHARS` (default 40000), `MCP_SEARCH_AUTH_TOKEN` (optional; unset means no auth, LAN-only deployment).
-- Fail fast at startup: missing Uruky or Reddit credentials abort the launch (all three tools must be operational from the first connection); `MCP_SEARCH_AUTH_TOKEN` is the only optional variable. This is a deliberate posture for personal day-to-day use — if testing reveals it is too rigid, relaxing a specific credential to optional-with-loud-tool-errors is a revisited decision to be recorded in an ADR at that point.
-- `SearchProvider` protocol returning normalized results (`url`, `title`, `snippet`, `date`); Uruky adapter implements it. No provider fallback logic in 1.0.
+- Fail fast at startup: missing Uruky or Reddit credentials abort the launch (all three tools must be operational from the first connection); `MCP_SEARCH_AUTH_TOKEN` is the only optional variable.
+- `SearchProvider` protocol returning normalized results (`url`, `title`, `description`, `date`); Uruky adapter implements it. No provider fallback logic in 1.0.
 
 ## Phase 3: `web_search`
 

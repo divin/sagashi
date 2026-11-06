@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+class ConfigError(Exception):
+    """Configuration error with a user-friendly message."""
+
+
 @dataclass
 class Config:
     """Server configuration loaded from environment."""
@@ -22,9 +26,15 @@ class Config:
     def validate(self) -> None:
         """Require Uruky and Reddit credentials (fail-fast)."""
         if self.uruky_token is None:
-            raise ValueError("URUKY_TOKEN is required")
-        if self.reddit_client_id is None or self.reddit_client_secret is None or self.reddit_user_agent is None:
-            raise ValueError("REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT are required")
+            raise ConfigError("URUKY_TOKEN is required")
+        if (
+            self.reddit_client_id is None
+            or self.reddit_client_secret is None
+            or self.reddit_user_agent is None
+        ):
+            raise ConfigError(
+                "REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT are required"
+            )
 
 
 def load_config() -> Config:

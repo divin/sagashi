@@ -1,4 +1,3 @@
-#!/usr/bin/env -S uv run
 """Sagashi CLI entry point."""
 
 from sagashi.server import build_server

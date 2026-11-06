@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import os
-from typing import cast
+from typing import override
 
 import httpx
-from typing_extensions import override
 
-from sagashi.providers import SearchResult, SearchProvider
+from sagashi.providers import SearchProvider, SearchResult
 
 
 class UrukyProvider(SearchProvider):
@@ -19,7 +17,9 @@ class UrukyProvider(SearchProvider):
         self._base_url = "https://uruky.com/search"
 
     @override
-    async def search(self, query: str, recency: str | None = None) -> list[SearchResult]:
+    async def search(
+        self, query: str, recency: str | None = None
+    ) -> list[SearchResult]:
         """Search via Uruky."""
         params: dict[str, str] = {"q": query, "f": "json", "i": self._token}
         if recency:
@@ -37,7 +37,9 @@ class UrukyProvider(SearchProvider):
                     url=str(item.get("url", "")),
                     title=str(item.get("title", "")),
                     description=str(item.get("description", "")),
-                    date=item.get("date") if isinstance(item.get("date"), str) else None,
+                    date=item.get("date")
+                    if isinstance(item.get("date"), str)
+                    else None,
                 )
             )
         return results
