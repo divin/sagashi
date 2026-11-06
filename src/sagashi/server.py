@@ -89,8 +89,6 @@ def build_server() -> FastMCP:
     # Thread pool for sync operations (PRAW)
     _sync_executor = ThreadPoolExecutor(max_workers=3)
 
-    # Create FastMCP server with auth token if configured
-    auth_token = config.mcp_auth_token
     mcp = FastMCP(
         "Sagashi",
         instructions=textwrap.dedent("""\
@@ -107,7 +105,6 @@ def build_server() -> FastMCP:
             When calling `fetch_page`, if the URL is from reddit.com or redd.it,
             the server will automatically route to `search_reddit` instead.
             """),
-        auth_token=auth_token,
     )
 
     provider = _load_provider(config)

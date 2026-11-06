@@ -27,7 +27,7 @@ test:
 
 # Start the server locally (uses .env)
 run:
-    uv run sagashi
+    @if [ -f .env ]; then set -a; source .env; set +a; fi && uv run sagashi
 
 # Crawler verification
 crawl-check:
