@@ -1,9 +1,9 @@
-"""Reddit search module."""
+"""Reddit search module (asyncpraw)."""
 
 from __future__ import annotations
 
-from praw import Reddit
-from praw.models import MoreComments
+from asyncpraw import Reddit
+from asyncpraw.models import MoreComments
 
 from sagashi.config import Config, load_config
 
@@ -13,7 +13,7 @@ class RedditError(Exception):
 
 
 def _create_reddit_client(config: Config) -> Reddit:
-    """Create a PRAW Reddit client from configured credentials."""
+    """Create an asyncpraw Reddit client from configured credentials."""
     if config.reddit_client_id is None:
         raise RedditError("REDDIT_CLIENT_ID is required")
     if config.reddit_client_secret is None:
@@ -48,16 +48,20 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
     reddit = _create_reddit_client(config)
 
     try:
-        submissions = list(
-            reddit.subreddit("all").search(
+        subreddit = await reddit.subreddit("all")
+        submissions = [
+            sub
+            async for sub in subreddit.search(
                 query,
                 sort="relevance",
                 time_filter=time_filter,
                 limit=10,
             )
-        )
+        ]
     except Exception as e:
         raise RedditError(f"Reddit API error: {e}") from e
+    finally:
+        await reddit.close()
 
     if not submissions:
         return "No Reddit results found."
@@ -68,8 +72,9 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
             f"- **{submission.title}** (https://reddit.com{submission.permalink})"
         )
         lines.append(f"  Score: {submission.score}")
-        if submission.author:
-            lines.append(f"  Author: /u/{submission.author.name}")
+        author = submission.author
+        if author is not None:
+            lines.append(f"  Author: /u/{author.name}")
 
     return "\n".join(lines)
 
@@ -91,10 +96,10 @@ async def fetch_thread(url: str) -> str:
     reddit = _create_reddit_client(config)
 
     try:
-        # Extract submission ID from URL
-        submission_id = url.split("/")[-1] if "/" in url else url
-        submission = reddit.submission(id=submission_id)
-        submission._fetch()
+        # Extract submission ID from URL (last path segment, strip query/fragment)
+        submission_id = url.split("/")[-1].split("?")[0].split("#")[0]
+        # asyncpraw fetches the submission by default (fetch=True)
+        submission = await reddit.submission(id=submission_id)
     except Exception as e:
         raise RedditError(f"Failed to fetch Reddit thread: {e}") from e
 
@@ -103,36 +108,42 @@ async def fetch_thread(url: str) -> str:
         f"**Score:** {submission.score}",
     ]
 
-    if submission.author:
-        lines.append(f"**Author:** /u/{submission.author.name}")
+    author = submission.author
+    if author is not None:
+        lines.append(f"**Author:** /u/{author.name}")
 
     if submission.selftext:
         lines.extend(["", "## Selftext", "", submission.selftext])
 
-    # Load top comments
-    submission.comments.replace_more(limit=0)
-    # Filter out MoreComments objects (they don't have a score attribute)
-    actual_comments = [
-        c for c in submission.comments.list() if not isinstance(c, MoreComments)
-    ]
-    top_comments = sorted(
-        actual_comments,
-        key=lambda c: c.score,
-        reverse=True,
-    )[:20]
+    try:
+        # Load top comments
+        await submission.comments.replace_more(limit=0)
+        # Filter out MoreComments objects (they don't have a score attribute)
+        actual_comments = [
+            c for c in submission.comments.list() if not isinstance(c, MoreComments)
+        ]
+        top_comments = sorted(
+            actual_comments,
+            key=lambda c: c.score,
+            reverse=True,
+        )[:20]
+    except Exception as e:
+        raise RedditError(f"Failed to load Reddit comments: {e}") from e
+    finally:
+        await reddit.close()
 
     if top_comments:
         lines.append("")
         lines.append("## Top Comments")
 
         for comment in top_comments:
-            lines.extend(
-                [
-                    "",
-                    f"### Comment by /u/{comment.author.name} (Score: {comment.score})",
-                    "",
-                    comment.body,
-                ]
-            )
+            comment_author = comment.author
+            if comment_author is not None:
+                header = (
+                    f"### Comment by /u/{comment_author.name} (Score: {comment.score})"
+                )
+            else:
+                header = f"### Comment (Score: {comment.score})"
+            lines.extend(["", header, "", comment.body])
 
     return "\n".join(lines)

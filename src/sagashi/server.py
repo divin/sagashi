@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import textwrap
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastmcp import FastMCP
@@ -47,47 +45,10 @@ def _load_provider(config: Config) -> SearchProvider:
     return UrukyProvider(config.uruky_token)
 
 
-def _search_reddit_sync(query: str, time_filter: str) -> str:
-    """Synchronous Reddit search for thread pool execution."""
-    from sagashi.reddit import RedditError, _create_reddit_client
-
-    config = load_config()
-    reddit = _create_reddit_client(config)
-
-    try:
-        submissions = list(
-            reddit.subreddit("all").search(
-                query,
-                sort="relevance",
-                time_filter=time_filter,
-                limit=10,
-            )
-        )
-    except Exception as e:
-        raise RedditError(f"Reddit API error: {e}") from e
-
-    if not submissions:
-        return "No Reddit results found."
-
-    lines: list[str] = []
-    for submission in submissions:
-        lines.append(
-            f"- **{submission.title}** (https://reddit.com{submission.permalink})"
-        )
-        lines.append(f"  Score: {submission.score}")
-        if submission.author:
-            lines.append(f"  Author: /u/{submission.author.name}")
-
-    return "\n".join(lines)
-
-
 def build_server() -> FastMCP:
     """Build and return the FastMCP server instance."""
     config = load_config()
     config.validate()
-
-    # Thread pool for sync operations (PRAW)
-    _sync_executor = ThreadPoolExecutor(max_workers=3)
 
     mcp = FastMCP(
         "Sagashi",
@@ -149,11 +110,9 @@ def build_server() -> FastMCP:
         time_filter: str = "month",
     ) -> str:
         """Search Reddit and return results as Markdown."""
-        # Run sync PRAW calls in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            _sync_executor, _search_reddit_sync, query, time_filter
-        )
+        from sagashi.reddit import search_reddit
+
+        return await search_reddit(query, time_filter=time_filter)
 
     @mcp.tool(
         name="fetch_page",
