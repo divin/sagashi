@@ -107,7 +107,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 10: docs and live verification
 
-**Status: not started.**
+**Status: in progress.**
 
 - README in the sibling-repo shape: what it is, how it works, quick start, tool reference, privacy notes, development section; Reddit app creation documented as a setup step even though credentials already exist.
 - Live verification against real Uruky and Reddit credentials, and end-to-end registration in both sign-off clients: pi and the llama.cpp web UI (which supports remote HTTP MCP servers — verified working as of the Oct 2026 llama.cpp releases, though still undocumented).
