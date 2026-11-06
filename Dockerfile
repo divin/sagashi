@@ -50,8 +50,10 @@ COPY src ./src
 # Install the package
 RUN uv sync --frozen --no-dev
 
-# Install Chromium for Crawl4AI using Playwright
-RUN uv run python -m playwright install chromium --with-deps
+# Install Chromium for Crawl4AI using Playwright into a shared location
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN uv run python -m playwright install chromium --with-deps \
+    && chmod -R a+rX /opt/ms-playwright
 
 # Set environment variables
 ENV CRAWL4AI_NO_CLOUD_NOTICE=1
