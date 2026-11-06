@@ -68,5 +68,7 @@ USER appuser
 # Expose the FastMCP server port (can be remapped by deployer)
 EXPOSE 3000
 
-# Default command
-CMD ["uv", "run", "sagashi"]
+# Run the installed console script directly — do not let uv re-sync the
+# root-owned venv at startup (appuser cannot write to it)
+ENV PATH="/app/.venv/bin:${PATH}"
+CMD ["sagashi"]
