@@ -56,7 +56,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 5: `fetch_page` and Reddit Routing
 
-**Status: not started. crawl4ai verified locally.**
+**Status: complete. crawl4ai verified locally.**
 
 ### Local crawler verification (done on the dev machine)
 

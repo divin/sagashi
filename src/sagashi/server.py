@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import textwrap
+from typing import Any
 
 from fastmcp import FastMCP
 
@@ -11,6 +12,29 @@ from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
 from sagashi.providers.uruky import UrukyProvider
 from sagashi.reddit import search_reddit
+
+
+class CrawlerHolder:
+    """Holds a single AsyncWebCrawler instance for the process lifetime."""
+
+    _instance: Any | None = None
+
+    @classmethod
+    async def get_crawler(cls) -> Any:
+        """Get or create the crawler instance."""
+        if cls._instance is None:
+            from crawl4ai import AsyncWebCrawler
+
+            cls._instance = AsyncWebCrawler(verbose=False)
+            await cls._instance.start()
+        return cls._instance
+
+    @classmethod
+    async def close(cls) -> None:
+        """Close the crawler instance."""
+        if cls._instance is not None:
+            await cls._instance.stop()
+            cls._instance = None
 
 
 def _load_provider(config: Config) -> SearchProvider:
@@ -100,6 +124,7 @@ def build_server() -> FastMCP:
     )
     async def fetch_page_tool(url: str) -> str:
         """Fetch a page and return its Markdown content."""
-        return await fetch_page(url, max_chars=config.fetch_max_chars)
+        crawler = await CrawlerHolder.get_crawler()
+        return await fetch_page(url, max_chars=config.fetch_max_chars, crawler=crawler)
 
     return mcp
