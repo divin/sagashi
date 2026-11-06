@@ -51,6 +51,33 @@ docker run -p 3000:3000 --env-file .env sagashi:latest
 
 Published images are available at `ghcr.io/divin/sagashi` for tagged releases. The container runs as a non-root user and includes headless Chromium for page fetching.
 
+## 🔌 Connecting an MCP client
+
+The server speaks Streamable HTTP and is served under `/mcp`, so the URL to register in any MCP client is:
+
+```sh
+http://<host>:<port>/mcp
+```
+
+<arg_value>Defaults are `127.0.0.1:8000` locally and `0.0.0.0:3000` in Docker (set via `HOST` and `PORT`). Binding details:
+
+- The container maps `PORT=3000` internally; use `-p <host-port>:3000` to expose it, e.g. `docker run -p 9092:3000 ...` serves `http://<host>:9092/mcp`.
+- Browser-based MCP clients connect cross-origin, so the server sends CORS headers. Restrict which origins may call it with `CORS_ORIGINS` (comma-separated, default: allow all — fine for LAN use).
+
+Most clients accept a URL directly, e.g. an `mcpServers` entry:
+
+```json
+{
+  "mcpServers": {
+    "sagashi": {
+      "url": "http://192.168.178.64:9092/mcp"
+    }
+  }
+}
+```
+
+For clients that can run shell commands but lack native MCP support, the [`fastmcp` CLI](https://gofastmcp.com/docs/cli/client) bridges the gap: `fastmcp list http://<host>:9092/mcp` to inspect tools, `fastmcp call <url> web_search query=test` to invoke them.
+
 ## ⚙️ Configuration
 
 | Variable | Required | Description |
@@ -61,6 +88,8 @@ Published images are available at `ghcr.io/divin/sagashi` for tagged releases. T
 | `REDDIT_USER_AGENT` | Yes | Reddit app user agent string |
 | `MCP_SEARCH_AUTH_TOKEN` | No | Reserved for external bearer-token auth setups |
 | `FETCH_MAX_CHARS` | No | Truncation ceiling for page content (default: 40000) |
+| `HOST` / `PORT` | No | Bind address (default `127.0.0.1:8000`; Docker sets `0.0.0.0:3000`) |
+| `CORS_ORIGINS` | No | Comma-separated browser origins allowed to call the server (default: all) |
 
 Missing required variables abort startup with a clear error; `.env` files are loaded automatically.
 
