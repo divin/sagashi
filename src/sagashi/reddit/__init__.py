@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from praw import Reddit
+from praw.models import MoreComments
 
 from sagashi.config import Config, load_config
 
@@ -110,8 +111,12 @@ async def fetch_thread(url: str) -> str:
 
     # Load top comments
     submission.comments.replace_more(limit=0)
+    # Filter out MoreComments objects (they don't have a score attribute)
+    actual_comments = [
+        c for c in submission.comments.list() if not isinstance(c, MoreComments)
+    ]
     top_comments = sorted(
-        submission.comments.list(),
+        actual_comments,
         key=lambda c: c.score,
         reverse=True,
     )[:20]
