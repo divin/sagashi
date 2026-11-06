@@ -86,7 +86,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 8: Docker packaging
 
-**Status: not started.**
+**Status: in progress.**
 
 - `Dockerfile`: uv-based Python 3.12 image with Chromium installed for Crawl4AI; non-root runtime user; `CRAWL4AI_NO_CLOUD_NOTICE=1` set in the image so container logs stay free of the Crawl4AI Cloud upsell banner.
 - `docker-compose.yaml` with default ports (remapping left to the deployer), `example.env` documenting every variable including Reddit app setup steps.

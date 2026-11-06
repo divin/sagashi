@@ -37,3 +37,15 @@ crawl-check:
 # Sync dependencies
 sync:
     uv sync --dev
+
+# Build Docker image
+docker-build:
+    docker build -t sagashi:latest .
+
+# Run Sagashi in Docker
+docker-run:
+    docker run -p 3000:3000 --env-file .env sagashi:latest
+
+# Run tests in Docker
+docker-test:
+    docker run --rm --env-file .env sagashi:latest uv run pytest tests -q
