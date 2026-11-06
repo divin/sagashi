@@ -101,7 +101,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 9: CI and release
 
-**Status: not started.**
+**Status: complete.**
 
 - GitHub Actions: lint/test workflow on push and PR, running `just check` and `just test`; image publish to GHCR on version tags, plain version tags only, `:latest` pointing at the newest release (sibling-project convention). Images build for amd64 only. The publish workflow builds the image and runs the Phase 8 crawler-in-Docker verification before pushing.
 
