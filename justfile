@@ -1,6 +1,6 @@
 # Sagashi justfile
 
-default: fmt lint isort
+default: fmt lint isort test
 
 # Format code with ruff (replaces black)
 fmt:
@@ -27,7 +27,7 @@ test:
 
 # Start the server locally (uses .env)
 run:
-    @if [ -f .env ]; then set -a; source .env; set +a; fi && uv run sagashi
+    uv run sagashi
 
 # Crawler verification
 crawl-check:
