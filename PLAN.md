@@ -79,7 +79,31 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 7: tests
 
-**Status: not started.**
+**Status: complete.**
+
+- Unit tests with mocked Uruky HTTP (success, auth failure, malformed JSON, no results)
+- Unit tests for Reddit URL detection (`is_reddit_url`, `is_blocked_url`)
+- Unit tests for config validation (missing credentials, empty strings)
+- Unit tests for RedditError
+- No live network calls in the test suite
+
+## Phase 8: Docker packaging
+
+**Status: complete.**
+
+- `Dockerfile`: uv-based Python 3.12 image with Chromium for Crawl4AI
+- Non-root runtime user (`appuser`)
+- `CRAWL4AI_NO_CLOUD_NOTICE=1` set in the image
+- `docker-compose.yaml` with default port 3000
+- `example.env` documenting every variable including Reddit app setup
+
+### Crawler-in-Docker verification checklist (must all pass before 1.0)
+
+- Chromium installed during image build via `apt-get`
+- Chromium works under non-root user with `--no-sandbox` (default Playwright behavior)
+- `/dev/shm` size sufficient (default 64MB from Docker)
+- Container smoke crawl: `curl https://www.example.com | grep -q "Example Domain"` passes
+- Warm-browser proof: `CrawlerHolder` singleton ensures single Chromium instance per container
 
 - Unit tests with mocked Uruky HTTP (success, auth failure, malformed JSON), mocked PRAW (search, thread rendering, deleted threads), Reddit Routing (reddit.com, redd.it, blocklist), truncation marker, and config validation.
 - No live network calls in the test suite.
