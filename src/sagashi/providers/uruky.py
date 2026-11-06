@@ -23,7 +23,7 @@ class UrukyProvider(SearchProvider):
         """Search via Uruky."""
         params: dict[str, str] = {"q": query, "f": "json", "i": self._token}
         if recency:
-            params["r"] = recency
+            params["w"] = recency
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(self._base_url, params=params)
@@ -36,7 +36,7 @@ class UrukyProvider(SearchProvider):
                 SearchResult(
                     url=str(item.get("url", "")),
                     title=str(item.get("title", "")),
-                    description=str(item.get("description", "")),
+                    snippet=str(item.get("description", "")),
                     date=item.get("date")
                     if isinstance(item.get("date"), str)
                     else None,

@@ -42,7 +42,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 3: `web_search`
 
-**Status: not started.**
+**Status: complete.**
 
 - Uruky adapter calls `GET https://uruky.com/search` with `q`, `f=json`, `i=<token>`, optional `w` mapped from `recency` (`day`/`week`/`month`/`year`/`all`).
 - First page only, no pagination parameter; compact Markdown list of title, URL, snippet, date. Explicit error text on HTTP/auth failures.

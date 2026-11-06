@@ -67,8 +67,8 @@ def build_server() -> FastMCP:
         lines: list[str] = []
         for result in results:
             lines.append(f"- **{result.title}** ({result.url})")
-            if result.description:
-                lines.append(f"  {result.description}")
+            if result.snippet:
+                lines.append(f"  {result.snippet}")
             if result.date:
                 lines.append(f"  Date: {result.date}")
 

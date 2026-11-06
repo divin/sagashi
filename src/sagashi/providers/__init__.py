@@ -12,7 +12,7 @@ class SearchResult:
 
     url: str
     title: str
-    description: str
+    snippet: str
     date: str | None = None
 
 
