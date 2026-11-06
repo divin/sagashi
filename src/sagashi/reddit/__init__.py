@@ -30,7 +30,18 @@ def _create_reddit_client(config: Config) -> Reddit:
     )
 
 
-async def search_reddit(query: str, time_filter: str = "month") -> str:
+REDDIT_LIMIT_MIN = 1
+REDDIT_LIMIT_MAX = 25
+COMMENT_COUNT_MIN = 1
+COMMENT_COUNT_MAX = 50
+
+
+def _clamp(value: int, lo: int, hi: int) -> int:
+    """Clamp value into [lo, hi]."""
+    return max(lo, min(hi, value))
+
+
+async def search_reddit(query: str, time_filter: str = "month", limit: int = 10) -> str:
     """Search Reddit via the official API and render a markdown summary.
 
     Parameters
@@ -39,12 +50,15 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
         Search query string.
     time_filter : str, optional
         Time range to search (day, week, month, year, all). Default is "month".
+    limit : int, optional
+        Maximum number of results (1-25). Default is 10.
 
     Returns
     -------
     str
         Markdown-formatted search results.
     """
+    limit = _clamp(limit, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX)
     config = load_config()
     reddit = _create_reddit_client(config)
 
@@ -56,7 +70,7 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
                 query,
                 sort="relevance",
                 time_filter=time_filter,
-                limit=10,
+                limit=limit,
             )
         ]
     except Exception as e:
@@ -88,19 +102,22 @@ async def search_reddit(query: str, time_filter: str = "month") -> str:
     return "\n".join(lines)
 
 
-async def fetch_thread(url: str) -> str:
+async def fetch_thread(url: str, comment_count: int = 20) -> str:
     """Fetch a Reddit thread and render it as Markdown.
 
     Parameters
     ----------
     url : str
         URL of the Reddit thread (can be reddit.com or redd.it).
+    comment_count : int, optional
+        Maximum number of top comments to render (1-50). Default is 20.
 
     Returns
     -------
     str
         Markdown-formatted thread content.
     """
+    comment_count = _clamp(comment_count, COMMENT_COUNT_MIN, COMMENT_COUNT_MAX)
     config = load_config()
     reddit = _create_reddit_client(config)
 
@@ -135,7 +152,7 @@ async def fetch_thread(url: str) -> str:
             actual_comments,
             key=lambda c: c.score,
             reverse=True,
-        )[:20]
+        )[:comment_count]
     except Exception as e:
         raise RedditError(f"Failed to load Reddit comments: {e}") from e
     finally:

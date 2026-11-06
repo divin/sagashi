@@ -112,16 +112,19 @@ def build_server() -> FastMCP:
 
         Use this for Reddit-specific questions or when the user explicitly asks
         about Reddit. Returns a compact Markdown list of search results.
+        Optional params: time_filter (day/week/month/year/all, default month),
+        limit (1-25, default 10).
         """,
     )
     async def search_reddit_tool(
         query: str,
         time_filter: str = "month",
+        limit: int = 10,
     ) -> str:
         """Search Reddit and return results as Markdown."""
         from sagashi.reddit import search_reddit
 
-        return await search_reddit(query, time_filter=time_filter)
+        return await search_reddit(query, time_filter=time_filter, limit=limit)
 
     @mcp.tool(
         name="fetch_page",
@@ -129,12 +132,22 @@ def build_server() -> FastMCP:
 
         Use this when the user provides a specific URL to fetch. If the URL is
         from reddit.com or redd.it, it will be routed to `search_reddit` instead.
-        Content is truncated at FETCH_MAX_CHARS (default 40000).
+        Content is truncated at max_chars (default: FETCH_MAX_CHARS, 40000;
+        requests are clamped to the configured ceiling).
         """,
     )
-    async def fetch_page_tool(url: str) -> str:
+    async def fetch_page_tool(
+        url: str,
+        max_chars: int | None = None,
+    ) -> str:
         """Fetch a page and return its Markdown content."""
+        # Agent may adjust truncation within the configured ceiling
+        effective_max = (
+            max(1000, min(max_chars, config.fetch_max_chars))
+            if max_chars is not None
+            else config.fetch_max_chars
+        )
         crawler = await CrawlerHolder.get_crawler()
-        return await fetch_page(url, max_chars=config.fetch_max_chars, crawler=crawler)
+        return await fetch_page(url, max_chars=effective_max, crawler=crawler)
 
     return mcp

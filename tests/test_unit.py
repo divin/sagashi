@@ -244,3 +244,20 @@ class TestRerank:
             body_of=lambda r: "",
         )
         assert ranked == ["first", "second", "third"]
+
+
+class TestRedditParameterClamping:
+    """Tests for tool parameter clamping."""
+
+    def test_clamp_within_bounds(self) -> None:
+        """Values inside bounds pass through."""
+        from sagashi.reddit import _clamp
+
+        assert _clamp(10, 1, 25) == 10
+
+    def test_clamp_respects_bounds(self) -> None:
+        """Out-of-range values are clamped."""
+        from sagashi.reddit import _clamp
+
+        assert _clamp(0, 1, 25) == 1
+        assert _clamp(100, 1, 25) == 25
