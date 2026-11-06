@@ -3147,6 +3147,7 @@ dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "praw" },
+    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -3164,6 +3165,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=4.1.6" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "praw", specifier = ">=8.0.3" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
 ]
 
 [package.metadata.requires-dev]

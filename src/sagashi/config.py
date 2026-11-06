@@ -6,6 +6,13 @@ import os
 from dataclasses import dataclass
 from typing import Literal
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class ConfigError(Exception):
     """Configuration error with a user-friendly message."""
@@ -37,14 +44,20 @@ class Config:
             )
 
 
+def _get_env_var(name: str) -> str | None:
+    """Get environment variable, returning None if empty or unset."""
+    value = os.getenv(name)
+    return value if value else None
+
+
 def load_config() -> Config:
     """Load configuration from environment variables."""
     return Config(
         search_provider="uruky",
-        uruky_token=os.getenv("URUKY_TOKEN"),
-        reddit_client_id=os.getenv("REDDIT_CLIENT_ID"),
-        reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-        reddit_user_agent=os.getenv("REDDIT_USER_AGENT"),
+        uruky_token=_get_env_var("URUKY_TOKEN"),
+        reddit_client_id=_get_env_var("REDDIT_CLIENT_ID"),
+        reddit_client_secret=_get_env_var("REDDIT_CLIENT_SECRET"),
+        reddit_user_agent=_get_env_var("REDDIT_USER_AGENT"),
         fetch_max_chars=int(os.getenv("FETCH_MAX_CHARS", "40000")),
-        mcp_auth_token=os.getenv("MCP_SEARCH_AUTH_TOKEN"),
+        mcp_auth_token=_get_env_var("MCP_SEARCH_AUTH_TOKEN"),
     )
