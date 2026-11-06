@@ -49,7 +49,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 4: Reddit module
 
-**Status: not started.**
+**Status: complete.**
 
 - PRAW client with read scope; `search_reddit(query, time_filter)` over `subreddit("all")`, relevance sort, ~10 results as Markdown list.
 - Thread-to-Markdown rendering: title, selftext, top ~20 score-sorted comments with author and score; `replace_more(limit=0)`.
