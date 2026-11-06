@@ -59,7 +59,7 @@ The server speaks Streamable HTTP and is served under `/mcp`, so the URL to regi
 http://<host>:<port>/mcp
 ```
 
-<arg_value>Defaults are `127.0.0.1:8000` locally and `0.0.0.0:3000` in Docker (set via `HOST` and `PORT`). Binding details:
+Defaults are `127.0.0.1:8000` locally and `0.0.0.0:3000` in Docker (set via `HOST` and `PORT`). Binding details:
 
 - The container maps `PORT=3000` internally; use `-p <host-port>:3000` to expose it, e.g. `docker run -p 9092:3000 ...` serves `http://<host>:9092/mcp`.
 - Browser-based MCP clients connect cross-origin, so the server sends CORS headers. Restrict which origins may call it with `CORS_ORIGINS` (comma-separated, default: allow all — fine for LAN use).
@@ -70,7 +70,7 @@ Most clients accept a URL directly, e.g. an `mcpServers` entry:
 {
   "mcpServers": {
     "sagashi": {
-      "url": "http://192.168.178.64:9092/mcp"
+      "url": "http://192.168.1.10:9092/mcp"
     }
   }
 }
