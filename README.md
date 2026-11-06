@@ -12,7 +12,7 @@ flowchart LR
     B -->|web_search| C[Uruky API]
     B -->|search_reddit| D[Reddit official API]
     B -->|fetch_page| E[Crawl4AI / headless Chromium]
-    E -. "redd.it URLs" .-> D
+    E -.->|"redd.it URLs"| D
 ```
 
 A single long-lived process serves three tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` links are refused (ToS compliance), `redd.it` links are served through the official API instead — the crawler never touches Reddit.
