@@ -1,0 +1,29 @@
+[project]
+name = "sagashi"
+version = "0.1.0"
+description = "Self-hosted MCP server for web search and page fetching"
+readme = "README.md"
+authors = [
+    { name = "divin", email = "71128266+divin@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "crawl4ai>=0.9.5",
+    "fastmcp>=4.1.6",
+    "httpx>=0.28.0",
+    "praw>=8.0.3",
+]
+
+[project.scripts]
+sagashi = "sagashi:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+    "ty>=0.0.99",
+]
