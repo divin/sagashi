@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastmcp import FastMCP
@@ -11,7 +13,6 @@ from sagashi.config import Config, ConfigError, load_config
 from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
 from sagashi.providers.uruky import UrukyProvider
-from sagashi.reddit import search_reddit
 
 
 class CrawlerHolder:
@@ -46,11 +47,50 @@ def _load_provider(config: Config) -> SearchProvider:
     return UrukyProvider(config.uruky_token)
 
 
+def _search_reddit_sync(query: str, time_filter: str) -> str:
+    """Synchronous Reddit search for thread pool execution."""
+    from sagashi.reddit import RedditError, _create_reddit_client
+
+    config = load_config()
+    reddit = _create_reddit_client(config)
+
+    try:
+        submissions = list(
+            reddit.subreddit("all").search(
+                query,
+                sort="relevance",
+                time_filter=time_filter,
+                limit=10,
+            )
+        )
+    except Exception as e:
+        raise RedditError(f"Reddit API error: {e}") from e
+
+    if not submissions:
+        return "No Reddit results found."
+
+    lines: list[str] = []
+    for submission in submissions:
+        lines.append(
+            f"- **{submission.title}** (https://reddit.com{submission.permalink})"
+        )
+        lines.append(f"  Score: {submission.score}")
+        if submission.author:
+            lines.append(f"  Author: /u/{submission.author.name}")
+
+    return "\n".join(lines)
+
+
 def build_server() -> FastMCP:
     """Build and return the FastMCP server instance."""
     config = load_config()
     config.validate()
 
+    # Thread pool for sync operations (PRAW)
+    _sync_executor = ThreadPoolExecutor(max_workers=3)
+
+    # Create FastMCP server with auth token if configured
+    auth_token = config.mcp_auth_token
     mcp = FastMCP(
         "Sagashi",
         instructions=textwrap.dedent("""\
@@ -67,6 +107,7 @@ def build_server() -> FastMCP:
             When calling `fetch_page`, if the URL is from reddit.com or redd.it,
             the server will automatically route to `search_reddit` instead.
             """),
+        auth_token=auth_token,
     )
 
     provider = _load_provider(config)
@@ -111,7 +152,11 @@ def build_server() -> FastMCP:
         time_filter: str = "month",
     ) -> str:
         """Search Reddit and return results as Markdown."""
-        return await search_reddit(query, time_filter=time_filter)
+        # Run sync PRAW calls in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _sync_executor, _search_reddit_sync, query, time_filter
+        )
 
     @mcp.tool(
         name="fetch_page",

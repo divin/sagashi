@@ -71,7 +71,7 @@ Key decisions and their rationale are recorded in the glossary (`GLOSSARY.md`) a
 
 ## Phase 6: FastMCP server assembly
 
-**Status: not started.**
+**Status: complete.**
 
 - FastMCP server on Streamable HTTP, bound for local/trusted-network use; optional bearer-token auth enabled when `MCP_SEARCH_AUTH_TOKEN` is set.
 - Tool docstrings carry the routing contract (search → decide → fetch; Reddit questions → `search_reddit`).
