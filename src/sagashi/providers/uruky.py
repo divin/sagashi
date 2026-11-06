@@ -28,7 +28,10 @@ class UrukyProvider(SearchProvider):
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(self._base_url, params=params)
             resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError:
+                return []
 
         results: list[SearchResult] = []
         for item in data.get("results", []):

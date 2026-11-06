@@ -25,12 +25,12 @@ class Config:
 
     def validate(self) -> None:
         """Require Uruky and Reddit credentials (fail-fast)."""
-        if self.uruky_token is None:
+        if not self.uruky_token:
             raise ConfigError("URUKY_TOKEN is required")
         if (
-            self.reddit_client_id is None
-            or self.reddit_client_secret is None
-            or self.reddit_user_agent is None
+            not self.reddit_client_id
+            or not self.reddit_client_secret
+            or not self.reddit_user_agent
         ):
             raise ConfigError(
                 "REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT are required"
