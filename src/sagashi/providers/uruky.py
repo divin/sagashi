@@ -25,7 +25,7 @@ class UrukyProvider(SearchProvider):
         if recency:
             params["w"] = recency
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.get(self._base_url, params=params)
             resp.raise_for_status()
             try:

@@ -29,6 +29,11 @@ test:
 run:
     uv run sagashi
 
+# Live smoke test against a running server (start it first with `just run`)
+# Optionally override the target URL: `just smoke http://host:port/mcp`
+smoke URL='http://localhost:8000/mcp':
+    bash scripts/smoke_test.sh {{URL}}
+
 # Crawler verification
 crawl-check:
     uv run crawl4ai-doctor
