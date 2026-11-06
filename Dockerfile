@@ -16,19 +16,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Chromium dependencies
     chromium \
     chromium-driver \
-    # Playwright dependencies
+    # Chromium/Playwright shared-library dependencies (Debian trixie names)
     libwoff1 \
     libopus0 \
     libwebpdemux2 \
-    libenchant1c2a \
+    libenchant-2-2 \
     libgudev-1.0-0 \
     libsecret-1-0 \
     libhyphen0 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-2.0-0 \
     libegl1 \
     libgl1 \
     libgbm1 \
-    libasound2 \
+    libasound2t64 \
     # Crawl4AI requirements
     ffmpeg \
     libsm6 \
@@ -38,15 +38,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy source
+# Copy source (README.md is needed by the build backend for package metadata)
+COPY README.md ./
 COPY src ./src
 
 # Install the package
-RUN uv pip install -e . --no-build-isolation
+RUN uv sync --frozen --no-dev
 
 # Install Chromium for Crawl4AI using Playwright
 RUN uv run python -m playwright install chromium --with-deps
@@ -54,6 +56,9 @@ RUN uv run python -m playwright install chromium --with-deps
 # Set environment variables
 ENV CRAWL4AI_NO_CLOUD_NOTICE=1
 ENV PYTHONUNBUFFERED=1
+# Bind to all interfaces on the exposed port inside the container
+ENV HOST=0.0.0.0
+ENV PORT=3000
 
 # Switch to non-root user
 USER appuser
