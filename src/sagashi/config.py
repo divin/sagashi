@@ -34,13 +34,18 @@ class Config:
         """Require Uruky and Reddit credentials (fail-fast)."""
         if not self.uruky_token:
             raise ConfigError("URUKY_TOKEN is required")
-        if (
-            not self.reddit_client_id
-            or not self.reddit_client_secret
-            or not self.reddit_user_agent
-        ):
+        missing = [
+            name
+            for name, value in (
+                ("REDDIT_CLIENT_ID", self.reddit_client_id),
+                ("REDDIT_CLIENT_SECRET", self.reddit_client_secret),
+                ("REDDIT_USER_AGENT", self.reddit_user_agent),
+            )
+            if not value
+        ]
+        if missing:
             raise ConfigError(
-                "REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT are required"
+                f"Reddit credentials incomplete, missing: {', '.join(missing)}"
             )
 
 
