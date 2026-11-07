@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from sagashi.auth import StaticTokenVerifier
 from sagashi.config import Config, ConfigError, load_config
 from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
@@ -73,8 +74,13 @@ def build_server() -> FastMCP:
     config = load_config()
     config.validate()
 
+    # Optional bearer auth: enforced only when MCP_SEARCH_AUTH_TOKEN is set.
+    # Unset means an open server, which is acceptable on a trusted LAN.
+    auth = StaticTokenVerifier(config.mcp_auth_token) if config.mcp_auth_token else None
+
     mcp = FastMCP(
         "Sagashi",
+        auth=auth,
         instructions=textwrap.dedent("""\
             You are a helpful search assistant. Use the available tools to:
             1. `web_search` - General web search via Uruky

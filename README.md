@@ -86,7 +86,7 @@ For clients that can run shell commands but lack native MCP support, the [`fastm
 | `REDDIT_CLIENT_ID` | Yes | Reddit app client ID |
 | `REDDIT_CLIENT_SECRET` | Yes | Reddit app client secret |
 | `REDDIT_USER_AGENT` | Yes | Reddit app user agent string |
-| `MCP_SEARCH_AUTH_TOKEN` | No | Reserved for external bearer-token auth setups |
+| `MCP_SEARCH_AUTH_TOKEN` | No | Bearer token for MCP access. When set, every request must carry `Authorization: Bearer <token>`; when unset, the server is open (fine for a trusted LAN) |
 | `FETCH_MAX_CHARS` | No | Truncation ceiling for page content (default: 40000) |
 | `HOST` / `PORT` | No | Bind address (default `127.0.0.1:8000`; Docker sets `0.0.0.0:3000`) |
 | `CORS_ORIGINS` | No | Comma-separated browser origins allowed to call the server (default: all) |
@@ -98,6 +98,7 @@ Missing required variables abort startup with a clear error; `.env` files are lo
 - **Reddit content only from the official API**: crawling `reddit.com` is hard-blocked to comply with Reddit's Terms of Service and to avoid IP flagging; even if an agent insists, the server refuses. See [ADR 0001](docs/adr/0001-reddit-content-comes-only-from-the-official-api.md).
 - **Stateless**: Sagashi is a search proxy. Queries, results, and fetched pages are not stored.
 - **Your credentials, your host**: outbound traffic goes only to Uruky, Reddit's API, and the pages you fetch.
+- **Optional bearer auth**: set `MCP_SEARCH_AUTH_TOKEN` and the server requires `Authorization: Bearer <token>` on every request; leave it unset for an open server, which is acceptable on a trusted local network. MCP clients pass the header directly (e.g. pi: `pi mcp add search-tools --url http://host:8000/mcp --bearer-token-env-var MCP_SEARCH_AUTH_TOKEN`).
 
 ## 🧪 Development
 

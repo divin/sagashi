@@ -260,6 +260,106 @@ class TestToolParameterValidation:
             _effective_max_chars(-5, 40000)
 
 
+class TestStaticTokenVerifier:
+    """Tests for optional bearer-token auth."""
+
+    @pytest.mark.asyncio
+    async def test_correct_token_accepted(self) -> None:
+        """The configured token verifies."""
+        from sagashi.auth import StaticTokenVerifier
+
+        verifier = StaticTokenVerifier("secret-token")
+        access = await verifier.verify_token("secret-token")
+        assert access is not None
+        assert access.client_id == "sagashi-client"
+
+    @pytest.mark.asyncio
+    async def test_wrong_token_rejected(self) -> None:
+        """A wrong token does not verify."""
+        from sagashi.auth import StaticTokenVerifier
+
+        verifier = StaticTokenVerifier("secret-token")
+        assert await verifier.verify_token("wrong-token") is None
+        assert await verifier.verify_token("") is None
+
+    def test_build_server_with_token_sets_auth(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A configured token wires a verifier into the server."""
+        from sagashi.server import build_server
+
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+        monkeypatch.setenv("MCP_SEARCH_AUTH_TOKEN", "secret-token")
+
+        server = build_server()
+        assert server.auth is not None
+
+    def test_build_server_without_token_is_open(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No token configured means no auth (trusted-LAN mode)."""
+        from sagashi.server import build_server
+
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+        monkeypatch.delenv("MCP_SEARCH_AUTH_TOKEN", raising=False)
+
+        server = build_server()
+        assert server.auth is None
+
+    @pytest.mark.asyncio
+    async def test_http_app_enforces_bearer_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With a token set, requests without it get 401; with it, they pass."""
+        from starlette.testclient import TestClient
+
+        from sagashi.server import build_server
+
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+        monkeypatch.setenv("MCP_SEARCH_AUTH_TOKEN", "secret-token")
+
+        app = build_server().http_app(path="/mcp", transport="streamable-http")
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"},
+            },
+        }
+        with TestClient(app) as client:
+            no_auth = client.post("/mcp", json=body)
+            assert no_auth.status_code == 401
+
+            bad_auth = client.post(
+                "/mcp",
+                json=body,
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+            assert bad_auth.status_code == 401
+
+            good_auth = client.post(
+                "/mcp",
+                json=body,
+                headers={
+                    "Authorization": "Bearer secret-token",
+                    "Accept": "application/json, text/event-stream",
+                },
+            )
+            assert good_auth.status_code == 200
+
+
 class TestUrukyProvider:
     """Tests for Uruky search provider."""
 
