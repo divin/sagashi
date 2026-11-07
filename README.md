@@ -15,7 +15,7 @@ flowchart LR
     E -.->|"redd.it URLs"| D
 ```
 
-A single long-lived process serves three tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` links are refused (ToS compliance), `redd.it` links are served through the official API instead — the crawler never touches Reddit.
+A single long-lived process serves three tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` and `redd.it` links are both served through the official API (thread title, selftext, and top comments) — the crawler never touches Reddit (ToS compliance).
 
 ## 🛠️ Tools
 
@@ -23,7 +23,7 @@ A single long-lived process serves three tools over Streamable HTTP. A lexical r
 |------|---------|------------|
 | `web_search` | General web search queries | `query` (required), `recency` (day/week/month/year) |
 | `search_reddit` | Reddit-specific questions or explicit Reddit requests | `query` (required), `time_filter` (day/week/month/year/all, default `month`), `limit` (1–25, default 10) |
-| `fetch_page` | Fetching a specific URL | `url` (required), `max_chars` (≥ 1000, default `FETCH_MAX_CHARS`) |
+| `fetch_page` | Fetching a specific URL | `url` (required), `max_chars` (≥ 1, capped at `FETCH_MAX_CHARS`, default `FETCH_MAX_CHARS`) |
 
 All tools return compact Markdown sized for agent context windows; large pages are truncated with a visible marker at the configured limit. Parameters are clamped server-side, so agents can freely adjust them.
 

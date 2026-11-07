@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from asyncpraw import Reddit
 from asyncpraw.models import MoreComments
 
@@ -39,6 +41,27 @@ COMMENT_COUNT_MAX = 50
 def _clamp(value: int, lo: int, hi: int) -> int:
     """Clamp value into [lo, hi]."""
     return max(lo, min(hi, value))
+
+
+def _extract_submission_id(url: str) -> str:
+    """Extract the submission id from a reddit.com or redd.it URL.
+
+    Handles thread permalinks (``/comments/<id>/...``), comment permalinks
+    (``/comments/<id>/<slug>/<comment_id>/`` — the thread id wins), and
+    redd.it short links. Falls back to the last non-empty path segment.
+    """
+    match = re.search(r"/comments/([a-zA-Z0-9]+)", url)
+    if match:
+        return match.group(1)
+    match = re.search(r"redd\.it/([a-zA-Z0-9]+)", url)
+    if match:
+        return match.group(1)
+    segments = [
+        segment
+        for segment in url.split("/")
+        if segment and ":" not in segment and "." not in segment
+    ]
+    return segments[-1] if segments else ""
 
 
 async def search_reddit(query: str, time_filter: str = "month", limit: int = 10) -> str:
@@ -121,9 +144,11 @@ async def fetch_thread(url: str, comment_count: int = 20) -> str:
     config = load_config()
     reddit = _create_reddit_client(config)
 
+    submission_id = _extract_submission_id(url)
+    if not submission_id:
+        raise RedditError(f"Could not extract a submission ID from the URL: {url}")
+
     try:
-        # Extract submission ID from URL (last path segment, strip query/fragment)
-        submission_id = url.split("/")[-1].split("?")[0].split("#")[0]
         # asyncpraw fetches the submission by default (fetch=True)
         submission = await reddit.submission(id=submission_id)
     except Exception as e:

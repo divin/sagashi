@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import textwrap
-from typing import Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from pydantic import Field
 
 from sagashi.config import Config, ConfigError, load_config
 from sagashi.fetcher import fetch_page
@@ -46,6 +48,26 @@ def _load_provider(config: Config) -> SearchProvider:
     return UrukyProvider(config.uruky_token)
 
 
+_RECENCY_FILTERS = ("day", "week", "month", "year")
+
+
+def _validate_recency(recency: str | None) -> None:
+    """Raise a clear error for unknown recency values."""
+    if recency is not None and recency not in _RECENCY_FILTERS:
+        raise ToolError(
+            f"Invalid recency: {recency!r}. Use one of: {', '.join(_RECENCY_FILTERS)}."
+        )
+
+
+def _effective_max_chars(max_chars: int | None, ceiling: int) -> int:
+    """Resolve the requested truncation against the configured ceiling."""
+    if max_chars is not None and max_chars < 1:
+        raise ToolError("max_chars must be a positive integer.")
+    if max_chars is None:
+        return ceiling
+    return min(max_chars, ceiling)
+
+
 def build_server() -> FastMCP:
     """Build and return the FastMCP server instance."""
     config = load_config()
@@ -64,8 +86,10 @@ def build_server() -> FastMCP:
             - Reddit-specific questions → `search_reddit`
             - Fetching specific URLs → `fetch_page`
 
-            When calling `fetch_page`, if the URL is from reddit.com or redd.it,
-            the server will automatically route to `search_reddit` instead.
+            When calling `fetch_page`, a reddit.com or redd.it URL is
+            automatically served by the Reddit Source (official API): the
+            thread's title, selftext, and top comments come back as Markdown
+            and the crawler is never involved.
             """),
     )
 
@@ -77,6 +101,7 @@ def build_server() -> FastMCP:
 
         Use this for general web search queries. Returns a compact Markdown list
         of search results with title, URL, snippet, and date.
+        Optional param: recency - one of day, week, month, year.
         """,
     )
     async def web_search(
@@ -84,6 +109,7 @@ def build_server() -> FastMCP:
         recency: str | None = None,
     ) -> str:
         """Search the web and return results as Markdown."""
+        _validate_recency(recency)
         results = await provider.search(query, recency=recency)
         if not results:
             return "No results found."
@@ -130,23 +156,19 @@ def build_server() -> FastMCP:
         name="fetch_page",
         description="""Fetch a web page and return its Markdown content.
 
-        Use this when the user provides a specific URL to fetch. If the URL is
-        from reddit.com or redd.it, it will be routed to `search_reddit` instead.
+        Use this when the user provides a specific URL to fetch. A reddit.com
+        or redd.it URL is served by the Reddit Source instead: the thread's
+        title, selftext, and top comments are returned via the official API.
         Content is truncated at max_chars (default: FETCH_MAX_CHARS, 40000;
-        requests are clamped to the configured ceiling).
+        requests are capped at the configured ceiling).
         """,
     )
     async def fetch_page_tool(
         url: str,
-        max_chars: int | None = None,
+        max_chars: Annotated[int | None, Field(ge=1)] = None,
     ) -> str:
         """Fetch a page and return its Markdown content."""
-        # Agent may adjust truncation within the configured ceiling
-        effective_max = (
-            max(1000, min(max_chars, config.fetch_max_chars))
-            if max_chars is not None
-            else config.fetch_max_chars
-        )
+        effective_max = _effective_max_chars(max_chars, config.fetch_max_chars)
         crawler = await CrawlerHolder.get_crawler()
         return await fetch_page(url, max_chars=effective_max, crawler=crawler)
 

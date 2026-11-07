@@ -63,6 +63,6 @@ def load_config() -> Config:
         reddit_client_id=_get_env_var("REDDIT_CLIENT_ID"),
         reddit_client_secret=_get_env_var("REDDIT_CLIENT_SECRET"),
         reddit_user_agent=_get_env_var("REDDIT_USER_AGENT"),
-        fetch_max_chars=int(os.getenv("FETCH_MAX_CHARS", "40000")),
+        fetch_max_chars=max(1000, int(os.getenv("FETCH_MAX_CHARS", "40000"))),
         mcp_auth_token=_get_env_var("MCP_SEARCH_AUTH_TOKEN"),
     )

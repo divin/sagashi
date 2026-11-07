@@ -106,6 +106,160 @@ class TestIsBlockedUrl:
         assert not is_blocked_url("https://redd.it/abc123")
 
 
+class TestExtractSubmissionId:
+    """Tests for Reddit submission ID extraction."""
+
+    def test_reddit_com_thread_url(self) -> None:
+        """Thread permalink yields the thread id."""
+        from sagashi.reddit import _extract_submission_id
+
+        url = "https://reddit.com/r/LocalLLaMA/comments/1xppbht/we_are_in_the_golden/"
+        assert _extract_submission_id(url) == "1xppbht"
+
+    def test_reddit_com_comment_permalink(self) -> None:
+        """A comment permalink still yields the thread id, not the comment id."""
+        from sagashi.reddit import _extract_submission_id
+
+        url = "https://www.reddit.com/r/LocalLLaMA/comments/1xppbht/slug/abc1234/"
+        assert _extract_submission_id(url) == "1xppbht"
+
+    def test_redd_it_short_url(self) -> None:
+        """redd.it short links yield the slug."""
+        from sagashi.reddit import _extract_submission_id
+
+        assert _extract_submission_id("https://redd.it/1xppbht") == "1xppbht"
+
+    def test_trailing_slash_and_query(self) -> None:
+        """Trailing slashes and query strings do not break extraction."""
+        from sagashi.reddit import _extract_submission_id
+
+        url = "https://www.reddit.com/r/x/comments/1xppbht/?utm_source=share"
+        assert _extract_submission_id(url) == "1xppbht"
+
+    def test_empty_url(self) -> None:
+        """A URL without an id yields an empty string."""
+        from sagashi.reddit import _extract_submission_id
+
+        assert _extract_submission_id("https://www.reddit.com/") == ""
+
+
+class TestFetchPageRouting:
+    """Tests for deterministic Reddit routing inside fetch_page."""
+
+    @pytest.mark.asyncio
+    async def test_reddit_com_routes_to_reddit_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """reddit.com URLs go to fetch_thread (official API), never the crawler."""
+        calls: list[str] = []
+
+        async def fake_fetch_thread(url: str, comment_count: int = 20) -> str:
+            calls.append(url)
+            return "thread markdown"
+
+        import sagashi.reddit as reddit_module
+        from sagashi.fetcher import fetch_page
+
+        monkeypatch.setattr(reddit_module, "fetch_thread", fake_fetch_thread)
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        result = await fetch_page("https://www.reddit.com/r/x/comments/1xppbht/slug/")
+
+        assert result == "thread markdown"
+        assert calls == ["https://www.reddit.com/r/x/comments/1xppbht/slug/"]
+
+    @pytest.mark.asyncio
+    async def test_non_http_scheme_raises_clean_error(self) -> None:
+        """Non-http schemes fail with a short message, no stack trace."""
+        from sagashi.fetcher import FetchError, fetch_page
+
+        with pytest.raises(FetchError, match="only http:// and https://"):
+            await fetch_page("ftp://example.com/file")
+
+
+class TestFriendlyError:
+    """Tests for crawler error sanitization."""
+
+    def test_dns_error(self) -> None:
+        """DNS failures map to a domain typo hint."""
+        from sagashi.fetcher import _friendly_error
+
+        message = _friendly_error(
+            "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://x.com/"
+        )
+        assert "domain" in message.lower()
+
+    def test_timeout(self) -> None:
+        """Timeouts map to a timeout message."""
+        from sagashi.fetcher import _friendly_error
+
+        assert "timed out" in _friendly_error("Navigation timed out after 30s")
+
+    def test_no_trace_leak(self) -> None:
+        """Unknown errors are generic: no paths, line numbers, or code context."""
+        from sagashi.fetcher import _friendly_error
+
+        message = _friendly_error(
+            "Unexpected error in _crawl_web at line 779 in _crawl_web "
+            "(.venv/lib/python3.12/site-packages/crawl4ai/async_crawler_strategy.py)"
+        )
+        assert ".py" not in message
+        assert "line" not in message
+        assert "site-packages" not in message
+
+
+class TestToolParameterValidation:
+    """Tests for tool-level parameter validation helpers."""
+
+    def test_recency_valid_values(self) -> None:
+        """Documented recency values pass validation."""
+        from sagashi.server import _validate_recency
+
+        for value in (None, "day", "week", "month", "year"):
+            _validate_recency(value)
+
+    def test_recency_invalid_value(self) -> None:
+        """Unknown recency values raise a ToolError listing valid values."""
+        from fastmcp.exceptions import ToolError
+
+        from sagashi.server import _validate_recency
+
+        with pytest.raises(ToolError, match="one of: day, week, month, year"):
+            _validate_recency("banana")
+
+    def test_max_chars_default_is_ceiling(self) -> None:
+        """No max_chars means the configured ceiling."""
+        from sagashi.server import _effective_max_chars
+
+        assert _effective_max_chars(None, 40000) == 40000
+
+    def test_max_chars_honored_below_ceiling(self) -> None:
+        """Requested values below the ceiling are honored, not raised."""
+        from sagashi.server import _effective_max_chars
+
+        assert _effective_max_chars(200, 40000) == 200
+
+    def test_max_chars_capped_at_ceiling(self) -> None:
+        """Requested values above the ceiling are capped at the ceiling."""
+        from sagashi.server import _effective_max_chars
+
+        assert _effective_max_chars(100000, 40000) == 40000
+
+    def test_max_chars_rejects_non_positive(self) -> None:
+        """Zero or negative max_chars raise a ToolError."""
+        from fastmcp.exceptions import ToolError
+
+        from sagashi.server import _effective_max_chars
+
+        with pytest.raises(ToolError, match="positive integer"):
+            _effective_max_chars(0, 40000)
+        with pytest.raises(ToolError, match="positive integer"):
+            _effective_max_chars(-5, 40000)
+
+
 class TestUrukyProvider:
     """Tests for Uruky search provider."""
 
