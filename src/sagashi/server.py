@@ -206,7 +206,7 @@ def build_server() -> FastMCP:
         )
 
     @mcp.tool(
-        name="batch_fetch_threads",
+        name="fetch_reddit_threads",
         description="""Fetch multiple Reddit threads in batch via the official API.
 
         Use this when you need to retrieve multiple threads efficiently in one
@@ -224,14 +224,14 @@ def build_server() -> FastMCP:
         }
         """,
     )
-    async def batch_fetch_threads_tool(
+    async def fetch_reddit_threads_tool(
         items: list[str | dict],
         comment_count: int = 20,
     ) -> dict[str, Any]:
         """Fetch multiple threads and return structured data."""
-        from sagashi.reddit import batch_fetch_threads
+        from sagashi.reddit import fetch_reddit_threads
 
-        return await batch_fetch_threads(items, comment_count=comment_count)
+        return await fetch_reddit_threads(items, comment_count=comment_count)
 
     @mcp.tool(
         name="fetch_page",

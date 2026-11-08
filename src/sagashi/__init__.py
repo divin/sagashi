@@ -1,6 +1,6 @@
 """Sagashi (探し, “search”) — self-hosted MCP server for web search and page fetching."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from sagashi.__main__ import main
 

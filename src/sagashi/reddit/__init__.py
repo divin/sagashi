@@ -307,11 +307,11 @@ async def list_subreddit_posts(
         await reddit.close()
 
 
-async def batch_fetch_threads(
+async def fetch_reddit_threads(
     items: list[str | dict],
     comment_count: int = 20,
 ) -> dict[str, Any]:
-    """Fetch multiple Reddit threads in batch via the official API.
+    """Fetch multiple Reddit threads via the official API.
 
     Parameters
     ----------

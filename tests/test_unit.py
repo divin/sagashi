@@ -861,14 +861,14 @@ class TestListSubredditPosts:
             await list_subreddit_posts("test", sort="gilded")
 
 
-class TestBatchFetchThreads:
-    """Tests for batch_fetch_threads function."""
+class TestFetchRedditThreads:
+    """Tests for fetch_reddit_threads function."""
 
     @pytest.mark.asyncio
     async def test_returns_structured_thread_data(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that batch_fetch_threads returns structured data with errors."""
+        """Test that fetch_reddit_threads returns structured data with errors."""
         from datetime import datetime
 
         class FakeSubmission:
@@ -918,9 +918,11 @@ class TestBatchFetchThreads:
         monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
         monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
 
-        from sagashi.reddit import batch_fetch_threads
+        from sagashi.reddit import fetch_reddit_threads
 
-        result = await batch_fetch_threads(["https://redd.it/abc123"], comment_count=10)
+        result = await fetch_reddit_threads(
+            ["https://redd.it/abc123"], comment_count=10
+        )
 
         assert "results" in result
         assert "errors" in result
@@ -993,9 +995,9 @@ class TestBatchFetchThreads:
         monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
         monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
 
-        from sagashi.reddit import batch_fetch_threads
+        from sagashi.reddit import fetch_reddit_threads
 
-        result = await batch_fetch_threads(
+        result = await fetch_reddit_threads(
             [
                 "https://redd.it/valid123",
                 "",  # Empty string - no ID to extract
@@ -1013,7 +1015,7 @@ class TestBatchFetchThreads:
 
     @pytest.mark.asyncio
     async def test_handles_dict_items(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that batch_fetch_threads handles dict items with id/url keys."""
+        """Test that fetch_reddit_threads handles dict items with id/url keys."""
         received_ids: list[str] = []
 
         class FakeSubmission:
@@ -1065,9 +1067,9 @@ class TestBatchFetchThreads:
         monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
         monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
 
-        from sagashi.reddit import batch_fetch_threads
+        from sagashi.reddit import fetch_reddit_threads
 
-        result = await batch_fetch_threads(
+        result = await fetch_reddit_threads(
             [
                 {"url": "https://redd.it/dict123"},
                 {"id": "dict456"},
@@ -1273,8 +1275,8 @@ class TestSubredditPrefixStripping:
         assert received_names == ["learnpython"]
 
 
-class TestBatchFetchThreadPerItemErrors:
-    """Tests for batch_fetch_threads per-item error handling."""
+class TestFetchRedditThreadsPerItemErrors:
+    """Tests for fetch_reddit_threads per-item error handling."""
 
     @pytest.mark.asyncio
     async def test_continues_on_reddit_error(
@@ -1337,9 +1339,9 @@ class TestBatchFetchThreadPerItemErrors:
         monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
         monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
 
-        from sagashi.reddit import batch_fetch_threads
+        from sagashi.reddit import fetch_reddit_threads
 
-        result = await batch_fetch_threads(
+        result = await fetch_reddit_threads(
             [
                 "https://redd.it/valid123",
                 "https://redd.it/invalid",  # This will raise RedditError
