@@ -145,18 +145,93 @@ def build_server() -> FastMCP:
         Use this for Reddit-specific questions or when the user explicitly asks
         about Reddit. Returns a compact Markdown list of search results.
         Optional params: time_filter (day/week/month/year/all, default month),
-        limit (1-25, default 10).
+        limit (1-25, default 10), subreddit (specific subreddit name without r/).
         """,
     )
     async def search_reddit_tool(
         query: str,
         time_filter: str = "month",
         limit: int = 10,
+        subreddit: str | None = None,
     ) -> str:
         """Search Reddit and return results as Markdown."""
         from sagashi.reddit import search_reddit
 
-        return await search_reddit(query, time_filter=time_filter, limit=limit)
+        return await search_reddit(
+            query, time_filter=time_filter, limit=limit, subreddit=subreddit
+        )
+
+    @mcp.tool(
+        name="list_subreddit_posts",
+        description="""List posts from a subreddit via the official Reddit API.
+
+        Use this to browse posts from a specific subreddit with sorting and
+        time filtering. Returns structured data including post metadata,
+        scores, and permalinks. Useful for Matomeru-style rolling 24-hour
+        queries with explicit UTC time windows.
+        
+        Parameters:
+        - subreddit: subreddit name (without r/ prefix)
+        - sort: hot, new, top, rising, controversial (default: hot;
+          time_filter only applies to top/controversial)
+        - time_filter: day, week, month, year, all (default: all)
+        - limit: 1-100 posts (default: 10)
+        - before/after: exclusive time-window bounds, epoch seconds or ISO-8601
+          (naive values treated as UTC)
+        - cursor: fullname (t3_...) to resume listing after (pagination)
+        
+        Returns: {posts: [...], pagination: {cursor}, metadata: {subreddit, sort, count}}
+        """,
+    )
+    async def list_subreddit_posts_tool(
+        subreddit: str,
+        sort: str = "hot",
+        time_filter: str = "all",
+        limit: int = 10,
+        before: str | None = None,
+        after: str | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List subreddit posts and return structured metadata."""
+        from sagashi.reddit import list_subreddit_posts
+
+        return await list_subreddit_posts(
+            subreddit,
+            sort=sort,
+            time_filter=time_filter,
+            limit=limit,
+            before=before,
+            after=after,
+            cursor=cursor,
+        )
+
+    @mcp.tool(
+        name="batch_fetch_threads",
+        description="""Fetch multiple Reddit threads in batch via the official API.
+
+        Use this when you need to retrieve multiple threads efficiently in one
+        call. Accepts a list of post IDs or URLs and returns structured thread
+        data including top comments. Returns per-item errors for robustness.
+        
+        Parameters:
+        - items: list of Reddit post IDs or URLs (strings or dicts with id/url keys)
+        - comment_count: 1-50 top comments per thread (default: 20)
+        
+        Returns: {
+            results: [{id, subreddit, title, score, comments: [...]}, ...],
+            errors: [{index, item, error}, ...],
+            metadata: {total, success_count, error_count}
+        }
+        """,
+    )
+    async def batch_fetch_threads_tool(
+        items: list[str | dict],
+        comment_count: int = 20,
+    ) -> dict[str, Any]:
+        """Fetch multiple threads and return structured data."""
+        from sagashi.reddit import batch_fetch_threads
+
+        return await batch_fetch_threads(items, comment_count=comment_count)
 
     @mcp.tool(
         name="fetch_page",

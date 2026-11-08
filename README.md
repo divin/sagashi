@@ -1,6 +1,6 @@
 # Sagashi 🔍
 
-**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) three tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, and clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
+**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) five tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, subreddit listing, batch thread fetching, and clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
 
 AI tools were used during development.
 
@@ -11,18 +11,32 @@ flowchart LR
     A[MCP client] -->|Streamable HTTP| B[Sagashi MCP server]
     B -->|web_search| C[Uruky API]
     B -->|search_reddit| D[Reddit official API]
+    B -->|list_subreddit_posts| D
+    B -->|batch_fetch_threads| D
     B -->|fetch_page| E[Crawl4AI / headless Chromium]
     E -.->|"redd.it URLs"| D
 ```
 
-A single long-lived process serves three tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` and `redd.it` links are both served through the official API (thread title, selftext, and top comments) — the crawler never touches Reddit (ToS compliance).
+A single long-lived process serves five tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` and `redd.it` links are both served through the official API (thread title, selftext, and top comments) — the crawler never touches Reddit (ToS compliance).
+
+### Reddit Tools
+
+Sagashi provides comprehensive Reddit integration via the official API:
+
+- **`search_reddit`**: Search across Reddit (default: r/all) or a specific subreddit with query-based search
+- **`list_subreddit_posts`**: Browse posts from a subreddit with sorting and time filtering (supports Matomeru-style rolling 24-hour queries via explicit UTC time windows)
+- **`batch_fetch_threads`**: Efficiently fetch multiple threads in one call with structured data and per-item error handling
+
+All Reddit operations use the official API only — no crawling, ensuring ToS compliance and fresh content.
 
 ## 🛠️ Tools
 
 | Tool | Use for | Parameters |
 |------|---------|------------|
 | `web_search` | General web search queries | `query` (required), `recency` (day/week/month/year) |
-| `search_reddit` | Reddit-specific questions or explicit Reddit requests | `query` (required), `time_filter` (day/week/month/year/all, default `month`), `limit` (1–25, default 10) |
+| `search_reddit` | Reddit-specific questions or explicit Reddit requests | `query` (required), `time_filter` (day/week/month/year/all, default `month`), `limit` (1–25, default 10), `subreddit` (optional subreddit name) |
+| `list_subreddit_posts` | Browse posts from a specific subreddit | `subreddit` (required), `sort` (hot/new/top/rising/controversial, default `hot`), `time_filter` (day/week/month/year/all, default `all`), `limit` (1–100, default 10), `before`/`after` (for pagination/time windows) |
+| `batch_fetch_threads` | Fetch multiple Reddit threads efficiently | `items` (required, list of IDs/URLs), `comment_count` (1–50, default 20) |
 | `fetch_page` | Fetching a specific URL | `url` (required), `max_chars` (≥ 1, capped at `FETCH_MAX_CHARS`, default `FETCH_MAX_CHARS`) |
 
 All tools return compact Markdown sized for agent context windows; large pages are truncated with a visible marker at the configured limit. Parameters are clamped server-side, so agents can freely adjust them.

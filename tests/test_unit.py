@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock
@@ -515,3 +517,890 @@ class TestRedditParameterClamping:
 
         assert _clamp(0, 1, 25) == 1
         assert _clamp(100, 1, 25) == 25
+
+
+class TestSearchRedditSubredditParameter:
+    """Tests for search_reddit with optional subreddit parameter."""
+
+    @pytest.mark.asyncio
+    async def test_default_subreddit_is_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Default behavior (no subreddit param) searches r/all."""
+        calls: list[str] = []
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                calls.append(name)
+                self.name = name
+
+            async def search(
+                self,
+                query: str,
+                sort: str,
+                time_filter: str,
+                limit: int,
+            ):
+                # Return empty generator
+                return
+                yield
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import search_reddit
+
+        await search_reddit("test query")
+
+        # Should have called subreddit("all")
+        assert calls == ["all"]
+
+    @pytest.mark.asyncio
+    async def test_custom_subreddit_search(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Custom subreddit parameter searches that subreddit."""
+        calls: list[str] = []
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                calls.append(name)
+                self.name = name
+
+            async def search(
+                self,
+                query: str,
+                sort: str,
+                time_filter: str,
+                limit: int,
+            ):
+                return
+                yield
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import search_reddit
+
+        await search_reddit("test query", subreddit="learnpython")
+
+        # Should have called subreddit("learnpython")
+        assert calls == ["learnpython"]
+
+    @pytest.mark.asyncio
+    async def test_subreddit_with_r_prefix_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Subreddit with r/ prefix should work."""
+        calls: list[str] = []
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                calls.append(name)
+                self.name = name
+
+            async def search(
+                self,
+                query: str,
+                sort: str,
+                time_filter: str,
+                limit: int,
+            ):
+                return
+                yield
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import search_reddit
+
+        # asyncpraw accepts r/ prefix, so it should work
+        await search_reddit("test query", subreddit="r/learnpython")
+
+        # asyncpraw handles r/ prefix, so it passes through
+        assert "r/learnpython" in calls or "learnpython" in calls
+
+
+class TestListSubredditPosts:
+    """Tests for list_subreddit_posts function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_structured_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that list_subreddit_posts returns structured metadata."""
+        from datetime import datetime
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+            async def hot(self, **kwargs: object):
+                # Fake post
+                class FakePost:
+                    id = "abc123"
+                    title = "Test Post"
+                    score = 42
+                    author = type("Author", (), {"name": "user1"})()
+                    created_utc = datetime(2024, 1, 1).timestamp()
+                    num_comments = 5
+                    url = "https://reddit.com/url"
+                    permalink = "/r/test/comments/abc123/"
+                    selftext = "Test body"
+
+                yield FakePost()
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        result = await list_subreddit_posts("test", sort="hot", limit=10)
+
+        assert "posts" in result
+        assert "metadata" in result
+        assert len(result["posts"]) == 1
+        assert result["posts"][0]["id"] == "abc123"
+        assert result["posts"][0]["title"] == "Test Post"
+        assert result["posts"][0]["score"] == 42
+        assert result["posts"][0]["author"] == "user1"
+        assert result["metadata"]["subreddit"] == "test"
+        assert result["metadata"]["sort"] == "hot"
+        assert result["metadata"]["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_time_window_parameters(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that before/after parameters are parsed as UTC timestamps."""
+        from datetime import datetime
+
+        class FakeSubreddit:
+            async def new(self, **kwargs):
+                class FakePost:
+                    id = "abc123"
+                    title = "Test Post"
+                    score = 42
+                    author = type("Author", (), {"name": "user1"})()
+                    created_utc = datetime(2024, 6, 15).timestamp()
+                    num_comments = 5
+                    url = "https://reddit.com/url"
+                    permalink = "/r/test/comments/abc123/"
+                    selftext = ""
+
+                yield FakePost()
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        # Test with ISO-8601 strings (naive values must be treated as UTC)
+        result = await list_subreddit_posts(
+            "test",
+            sort="new",
+            time_filter="day",
+            before="2024-06-16T00:00:00",
+            after="2024-06-14T00:00:00",
+        )
+
+        # Should return the post since it's within the window (2024-06-14 < 2024-06-15 < 2024-06-16)
+        assert len(result["posts"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_naive_iso_timestamps_treated_as_utc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Naive ISO strings and explicit-UTC strings must behave identically."""
+        from datetime import datetime
+
+        class FakeSubreddit:
+            async def new(self, **kwargs):
+                class FakePost:
+                    id = "abc123"
+                    title = "Test Post"
+                    score = 42
+                    author = type("Author", (), {"name": "user1"})()
+                    # 2024-06-15 12:00 UTC
+                    created_utc = datetime(2024, 6, 15, 12, 0, tzinfo=UTC).timestamp()
+                    num_comments = 5
+                    url = "https://reddit.com/url"
+                    permalink = "/r/test/comments/abc123/"
+                    selftext = ""
+
+                yield FakePost()
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        naive = await list_subreddit_posts(
+            "test", sort="new", after="2024-06-15T11:00:00"
+        )
+        explicit = await list_subreddit_posts(
+            "test", sort="new", after="2024-06-15T11:00:00+00:00"
+        )
+
+        assert len(naive["posts"]) == 1
+        assert len(explicit["posts"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_invalid_timestamp_raises_reddit_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A malformed before/after value raises a clear RedditError."""
+
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import RedditError, list_subreddit_posts
+
+        with pytest.raises(RedditError, match="invalid timestamp"):
+            await list_subreddit_posts("test", after="not-a-date")
+
+    @pytest.mark.asyncio
+    async def test_invalid_sort_raises_reddit_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unknown sort value raises a clear RedditError."""
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import RedditError, list_subreddit_posts
+
+        with pytest.raises(RedditError, match="Invalid sort"):
+            await list_subreddit_posts("test", sort="gilded")
+
+
+class TestBatchFetchThreads:
+    """Tests for batch_fetch_threads function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_structured_thread_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that batch_fetch_threads returns structured data with errors."""
+        from datetime import datetime
+
+        class FakeSubmission:
+            id = "abc123"
+            title = "Test Thread"
+            score = 100
+            created_utc = datetime(2024, 1, 1).timestamp()
+            permalink = "/r/test/comments/abc123/"
+            selftext = "Self text content"
+            num_comments = 10
+            author = type("Author", (), {"name": "user1"})()
+
+            class Subreddit:
+                display_name = "test"
+
+            subreddit = Subreddit()
+
+            class CommentsManager:
+                async def replace_more(self, limit: int | None = None) -> None:
+                    pass
+
+                def list(self):
+                    class FakeComment:
+                        author = type("Author", (), {"name": "commenter"})()
+                        score = 50
+                        body = "Great comment!"
+                        created_utc = datetime(2024, 1, 1).timestamp()
+
+                    return [FakeComment()]
+
+            comments = CommentsManager()
+
+        class FakeReddit:
+            async def submission(self, id: str) -> FakeSubmission:
+                return FakeSubmission()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import batch_fetch_threads
+
+        result = await batch_fetch_threads(["https://redd.it/abc123"], comment_count=10)
+
+        assert "results" in result
+        assert "errors" in result
+        assert "metadata" in result
+        assert len(result["results"]) == 1
+        assert result["results"][0]["id"] == "abc123"
+        assert result["results"][0]["title"] == "Test Thread"
+        assert result["results"][0]["score"] == 100
+        assert result["results"][0]["subreddit"] == "test"
+        assert len(result["results"][0]["comments"]) == 1
+        assert result["metadata"]["success_count"] == 1
+        assert result["metadata"]["error_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_per_item_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that failed items return per-item errors."""
+        call_count = 0
+
+        class FakeSubmission:
+            id = "valid123"
+            title = "Valid Thread"
+            score = 100
+            created_utc = 1704067200.0
+            permalink = "/r/test/comments/valid123/"
+            selftext = ""
+            num_comments = 5
+            author = type("Author", (), {"name": "user1"})()
+
+            class Subreddit:
+                display_name = "test"
+
+            subreddit = Subreddit()
+
+            class CommentsManager:
+                async def replace_more(self, limit: int | None = None) -> None:
+                    pass
+
+                def list(self):
+                    class FakeComment:
+                        author = type("Author", (), {"name": "c1"})()
+                        score = 10
+                        body = "Comment"
+                        created_utc = 1704067200.0
+
+                    return [FakeComment()]
+
+            comments = CommentsManager()
+
+        class SubmissionNotFound(RedditError):
+            """Custom exception for testing."""
+
+        class FakeReddit:
+            async def submission(self, id: str) -> FakeSubmission:
+                nonlocal call_count
+                call_count += 1
+                if id == "invalid":
+                    raise SubmissionNotFound("NotFound")
+                return FakeSubmission()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import batch_fetch_threads
+
+        result = await batch_fetch_threads(
+            [
+                "https://redd.it/valid123",
+                "",  # Empty string - no ID to extract
+                {"id": "valid123"},
+            ],
+            comment_count=5,
+        )
+
+        assert len(result["results"]) == 2
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["index"] == 1
+        assert result["metadata"]["total"] == 3
+        assert result["metadata"]["success_count"] == 2
+        assert result["metadata"]["error_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_handles_dict_items(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that batch_fetch_threads handles dict items with id/url keys."""
+        received_ids: list[str] = []
+
+        class FakeSubmission:
+            def __init__(self, id: str) -> None:
+                self.id = id
+                received_ids.append(id)
+                self.title = f"Title {id}"
+                self.score = 10
+                self.created_utc = 1704067200.0
+                self.permalink = f"/r/test/comments/{id}/"
+                self.selftext = ""
+                self.num_comments = 2
+                self.author = type("Author", (), {"name": "u"})()
+
+                class Subreddit:
+                    display_name = "test"
+
+                self.subreddit = Subreddit()
+
+                class CommentsManager:
+                    async def replace_more(self, limit: int | None = None) -> None:
+                        pass
+
+                    def list(self):
+                        class FakeComment:
+                            author = type("Author", (), {"name": "c"})()
+                            score = 5
+                            body = "Comment"
+                            created_utc = 1704067200.0
+
+                        return [FakeComment()]
+
+                self.comments = CommentsManager()
+
+        class FakeReddit:
+            async def submission(self, id: str) -> FakeSubmission:
+                return FakeSubmission(id)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import batch_fetch_threads
+
+        result = await batch_fetch_threads(
+            [
+                {"url": "https://redd.it/dict123"},
+                {"id": "dict456"},
+                {"permalink": "https://reddit.com/r/test/comments/dict789/"},
+            ],
+            comment_count=1,
+        )
+
+        assert len(result["results"]) == 3
+        assert "dict123" in received_ids
+        assert "dict456" in received_ids
+        assert "dict789" in received_ids
+
+
+class TestListSubredditPostsTimeWindow:
+    """Tests for list_subreddit_posts UTC time window filtering."""
+
+    @pytest.mark.asyncio
+    async def test_filters_by_after_timestamp(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that posts before 'after' timestamp are excluded."""
+        from datetime import datetime
+
+        class FakeSubreddit:
+            async def hot(self, **kwargs):
+                class FakePost:
+                    def __init__(self, ts: float) -> None:
+                        self.created_utc = ts
+                        self.id = "post1"
+                        self.title = "Old Post"
+                        self.score = 10
+                        self.author = type("Author", (), {"name": "user1"})()
+                        self.num_comments = 0
+                        self.url = "https://reddit.com/url"
+                        self.permalink = "/r/test/comments/post1/"
+                        self.selftext = ""
+
+                yield FakePost(datetime(2024, 1, 1, tzinfo=UTC).timestamp())
+                yield FakePost(datetime(2024, 6, 1, tzinfo=UTC).timestamp())
+                yield FakePost(datetime(2024, 12, 1, tzinfo=UTC).timestamp())
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        # Filter to only posts after 2024-06-01 (exclusive)
+        result = await list_subreddit_posts("test", after="2024-06-01")
+
+        # Should only have the Dec 1 post
+        assert len(result["posts"]) == 1
+        assert result["posts"][0]["id"] == "post1"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_before_timestamp(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that posts on/after 'before' timestamp are excluded."""
+        from datetime import datetime
+
+        class FakeSubreddit:
+            async def hot(self, **kwargs):
+                class FakePost:
+                    def __init__(self, ts: float) -> None:
+                        self.created_utc = ts
+                        self.id = "post1"
+                        self.title = "Post"
+                        self.score = 10
+                        self.author = type("Author", (), {"name": "user1"})()
+                        self.num_comments = 0
+                        self.url = "https://reddit.com/url"
+                        self.permalink = "/r/test/comments/post1/"
+                        self.selftext = ""
+
+                yield FakePost(datetime(2024, 1, 1, tzinfo=UTC).timestamp())
+                yield FakePost(datetime(2024, 6, 1, tzinfo=UTC).timestamp())
+                yield FakePost(datetime(2024, 12, 1, tzinfo=UTC).timestamp())
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        # Filter to only posts before 2024-06-01 (exclusive)
+        result = await list_subreddit_posts("test", before="2024-06-01")
+
+        # Should have Jan 1 and Jun 1 posts (Jun 1 is excluded since before is exclusive)
+        assert len(result["posts"]) == 1
+
+
+class TestSubredditPrefixStripping:
+    """Tests for subreddit name prefix handling."""
+
+    @pytest.mark.asyncio
+    async def test_r_prefix_stripped_correctly(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that r/ and r prefixes are stripped."""
+        received_names: list[str] = []
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                received_names.append(name)
+                self.name = name
+
+            async def hot(self, **kwargs):
+                return
+                yield
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import list_subreddit_posts
+
+        # Test various prefix forms
+        await list_subreddit_posts("rust")
+        await list_subreddit_posts("r/rust")
+        await list_subreddit_posts("r/rust")
+
+        # All should result in "rust"
+        assert received_names == ["rust", "rust", "rust"]
+
+    @pytest.mark.asyncio
+    async def test_r_prefix_in_search_reddit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that search_reddit also strips r/ prefix."""
+        received_names: list[str] = []
+
+        class FakeSubreddit:
+            def __init__(self, name: str) -> None:
+                received_names.append(name)
+                self.name = name
+
+            async def search(self, query: str, **kwargs):
+                return
+                yield
+
+        class FakeReddit:
+            async def subreddit(self, name: str) -> FakeSubreddit:
+                return FakeSubreddit(name)
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import search_reddit
+
+        await search_reddit("test query", subreddit="r/learnpython")
+
+        assert received_names == ["learnpython"]
+
+
+class TestBatchFetchThreadPerItemErrors:
+    """Tests for batch_fetch_threads per-item error handling."""
+
+    @pytest.mark.asyncio
+    async def test_continues_on_reddit_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that batch continues even when one item raises RedditError."""
+        call_count = 0
+
+        class RedditNotFound(RedditError):
+            pass
+
+        class FakeSubmission:
+            id = "valid123"
+            title = "Valid Thread"
+            score = 100
+            created_utc = 1704067200.0
+            permalink = "/r/test/comments/valid123/"
+            selftext = ""
+            num_comments = 5
+            author = type("Author", (), {"name": "user1"})()
+
+            class Subreddit:
+                display_name = "test"
+
+            subreddit = Subreddit()
+
+            class CommentsManager:
+                async def replace_more(self, limit: int | None = None) -> None:
+                    pass
+
+                def list(self):
+                    class FakeComment:
+                        author = type("Author", (), {"name": "c1"})()
+                        score = 10
+                        body = "Comment"
+                        created_utc = 1704067200.0
+
+                    return [FakeComment()]
+
+            comments = CommentsManager()
+
+        class FakeReddit:
+            async def submission(self, id: str) -> FakeSubmission:
+                nonlocal call_count
+                call_count += 1
+                if id == "invalid":
+                    raise RedditNotFound("NotFound")
+                return FakeSubmission()
+
+            async def close(self) -> None:
+                pass
+
+        import sagashi.reddit as reddit_module
+
+        monkeypatch.setattr(
+            reddit_module, "_create_reddit_client", lambda c: FakeReddit()
+        )
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+
+        from sagashi.reddit import batch_fetch_threads
+
+        result = await batch_fetch_threads(
+            [
+                "https://redd.it/valid123",
+                "https://redd.it/invalid",  # This will raise RedditError
+            ],
+            comment_count=5,
+        )
+
+        assert len(result["results"]) == 1
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["index"] == 1
+        assert "NotFound" in result["errors"][0]["error"]
+        assert result["metadata"]["total"] == 2
+        assert result["metadata"]["success_count"] == 1
+        assert result["metadata"]["error_count"] == 1
+
+
+class TestToolBackwardCompatibility:
+    """Tests for backward compatibility of existing tools."""
+
+    def test_search_reddit_preserves_backward_compatibility(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """search_reddit without subreddit param should work as before."""
+        import inspect
+
+        import sagashi.reddit as reddit_module
+
+        # Get the signature of search_reddit
+        sig = inspect.signature(reddit_module.search_reddit)
+        params = sig.parameters
+
+        # Check that all old parameters still exist and work
+        assert "query" in params
+        assert "time_filter" in params
+        assert "limit" in params
+        # The new subreddit parameter should be optional
+        assert "subreddit" in params
+        assert params["subreddit"].default is None
+
+        # Verify the function can be called with old-style arguments
+        async def test_backward_compat():
+            from sagashi.reddit import search_reddit
+
+            # This should work without errors (will fail due to no credentials, but that's OK)
+            try:
+                await search_reddit("test query")
+            except RedditError as e:
+                # We expect an error about missing credentials, not about parameters
+                assert "Reddit API error" in str(e) or "REDDIT_CLIENT_ID" in str(e)
+
+        import asyncio
+
+        asyncio.run(test_backward_compat())
+
+    def test_search_reddit_params_clamping(self) -> None:
+        """Test that parameter clamping works for search_reddit."""
+        from sagashi.reddit import REDDIT_LIMIT_MAX, REDDIT_LIMIT_MIN, _clamp
+
+        # Default limit should be clamped
+        assert _clamp(10, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == 10
+        # Too small should be clamped up
+        assert _clamp(0, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == REDDIT_LIMIT_MIN
+        # Too large should be clamped down
+        assert _clamp(100, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == REDDIT_LIMIT_MAX

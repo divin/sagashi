@@ -31,6 +31,9 @@ _Avoid_: forum
 **Page Source**:
 Any non-Reddit URL, fetched through the embedded crawler.
 
+**Matomeru**:
+A style of time-windowed Reddit browsing (e.g., “show me the top 10 posts in the last 24 hours”). Sagashi supports Matomeru-style queries via `list_subreddit_posts` with explicit `before`/`after` UTC timestamps for precise rolling windows.
+
 ### Routing
 
 **Reddit Routing**:
