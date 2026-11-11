@@ -315,6 +315,28 @@ class TestStaticTokenVerifier:
         assert server.auth is None
 
     @pytest.mark.asyncio
+    async def test_healthz_is_available_without_bearer_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The operational health route remains unauthenticated."""
+        from starlette.testclient import TestClient
+
+        from sagashi.server import build_server
+
+        monkeypatch.setenv("URUKY_TOKEN", "t")
+        monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+        monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("REDDIT_USER_AGENT", "agent")
+        monkeypatch.setenv("MCP_SEARCH_AUTH_TOKEN", "secret-token")
+
+        app = build_server().http_app(path="/mcp", transport="streamable-http")
+        with TestClient(app) as client:
+            response = client.get("/healthz")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy", "service": "sagashi"}
+
+    @pytest.mark.asyncio
     async def test_http_app_enforces_bearer_token(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

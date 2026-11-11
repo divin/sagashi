@@ -8,6 +8,8 @@ from typing import Annotated, Any
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from sagashi.auth import StaticTokenVerifier
 from sagashi.config import Config, ConfigError, load_config
@@ -98,6 +100,10 @@ def build_server() -> FastMCP:
             and the crawler is never involved.
             """),
     )
+
+    @mcp.custom_route("/healthz", methods=["GET"])
+    async def healthz(_request: Request) -> JSONResponse:
+        return JSONResponse({"status": "healthy", "service": "sagashi"})
 
     provider = _load_provider(config)
 

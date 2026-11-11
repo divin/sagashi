@@ -59,11 +59,15 @@ All tools return compact Markdown sized for agent context windows; large pages a
 
 ### Docker
 
+Copy `example.env` to `.env` and fill in the required credentials, then start Sagashi with Compose:
+
 ```sh
-docker run -p 3000:3000 --env-file .env sagashi:latest
+docker compose up -d
 ```
 
-Published images are available at `ghcr.io/divin/sagashi` for tagged releases. The container runs as a non-root user and includes headless Chromium for page fetching.
+The example `docker-compose.yaml` uses the published image from `ghcr.io/divin/sagashi`, publishes port `9092` (override with `SAGASHI_PORT`), and checks `GET /healthz` for container health. View logs with `docker compose logs -f sagashi`.
+
+The container runs as a non-root user and includes headless Chromium for page fetching. `GET /healthz` is an unauthenticated health endpoint for container monitoring. The compose file also attaches the container to a shared external `agents` network for multi-service setups; remove the `networks:` blocks for a standalone deployment.
 
 ## 🔌 Connecting an MCP client
 

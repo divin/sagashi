@@ -1,0 +1,40 @@
+# Example Compose file for deploying Sagashi with the published image.
+#
+# Usage:
+#   cp example.env .env   # fill in the required credentials
+#   docker compose up -d
+#
+# Mirrors the production deployment in hako (services/agent/sagashi):
+# published image, fixed container name, health check via /healthz.
+
+services:
+  sagashi:
+    image: ghcr.io/divin/sagashi:latest
+    container_name: sagashi
+    restart: unless-stopped
+    environment:
+      URUKY_TOKEN: ${URUKY_TOKEN:?Set URUKY_TOKEN in .env}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:?Set REDDIT_CLIENT_ID in .env}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:?Set REDDIT_CLIENT_SECRET in .env}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:?Set REDDIT_USER_AGENT in .env}
+      # Optional: set to require a bearer token on MCP endpoints.
+      MCP_SEARCH_AUTH_TOKEN: ${MCP_SEARCH_AUTH_TOKEN:-}
+      FETCH_MAX_CHARS: ${FETCH_MAX_CHARS:-40000}
+      TZ: Europe/Berlin
+    ports:
+      - "${SAGASHI_PORT:-9092}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    # Shared network for other agent services. Remove this block
+    # (and the networks: section below) for a standalone deployment.
+    networks:
+      - agents
+
+networks:
+  agents:
+    name: agents
+    external: true
