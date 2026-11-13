@@ -1735,6 +1735,15 @@ class TestFriendlyYtdlpError:
         assert "cookies.txt" in message
         assert "YOUTUBE_COOKIES_FILE" in message
 
+    def test_read_only_cookies(self) -> None:
+        """A read-only cookies mount gets an actionable message."""
+        from sagashi.youtube import _friendly_ytdlp_error
+
+        message = _friendly_ytdlp_error(
+            "OSError: [Errno 30] Read-only file system: '/app/cookies.txt'"
+        )
+        assert "read-write" in message
+
     def test_no_subtitles(self) -> None:
         """Missing captions get a clear message."""
         from sagashi.youtube import _friendly_ytdlp_error

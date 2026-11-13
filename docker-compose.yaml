@@ -28,9 +28,10 @@ services:
       # YouTube bot-checks the server's IP, so yt-dlp needs a cookies.txt
       # (Netscape format) exported while signed in to YouTube. Export it
       # once with a browser extension (e.g. "Get cookies.txt LOCALLY").
-      # If the file is missing, the transcript tool still works until
-      # YouTube starts bot-checking.
-      - ./cookies.txt:/app/cookies.txt:ro
+      # MUST be read-write: yt-dlp rewrites the file after every run to
+      # persist YouTube's rotating session cookies — a read-only mount
+      # crashes yt-dlp on exit.
+      - ./cookies.txt:/app/cookies.txt:rw
     ports:
       - "${SAGASHI_PORT:-9092}:3000"
     healthcheck:

@@ -43,6 +43,12 @@ def _friendly_ytdlp_error(stderr: str) -> str:
     details to the calling model and waste context tokens.
     """
     lowered = stderr.lower()
+    if "read-only file system" in lowered:
+        return (
+            "The cookies file is on a read-only filesystem, but yt-dlp needs "
+            "to rewrite it after every run (YouTube rotates session cookies). "
+            "Mount the cookies file read-write."
+        )
     if "sign in to confirm" in lowered:
         return (
             "YouTube bot-check blocked the request. Provide a cookies.txt "
