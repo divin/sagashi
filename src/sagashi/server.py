@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import textwrap
 from typing import Annotated, Any
 
@@ -18,6 +19,8 @@ from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
 from sagashi.providers.uruky import UrukyProvider
 from sagashi.rerank import RerankerClientError, rerank_results
+
+logger = logging.getLogger(__name__)
 
 
 class CrawlerHolder:
@@ -272,6 +275,7 @@ def build_server() -> FastMCP:
                 cookies_path=config.youtube_cookies_path,
             )
         except YoutubeTranscriptError as e:
+            logger.warning("fetch_youtube_transcript failed: %s", e)
             raise ToolError(str(e)) from e
 
     @mcp.tool(
@@ -290,8 +294,14 @@ def build_server() -> FastMCP:
         max_chars: Annotated[int | None, Field(ge=1)] = None,
     ) -> str:
         """Fetch a page and return its Markdown content."""
+        from sagashi.fetcher import FetchError
+
         effective_max = _effective_max_chars(max_chars, config.fetch_max_chars)
         crawler = await CrawlerHolder.get_crawler()
-        return await fetch_page(url, max_chars=effective_max, crawler=crawler)
+        try:
+            return await fetch_page(url, max_chars=effective_max, crawler=crawler)
+        except FetchError as e:
+            logger.warning("fetch_page failed: %s", e)
+            raise ToolError(str(e)) from e
 
     return mcp
