@@ -1,6 +1,6 @@
 [project]
 name = "sagashi"
-version = "1.0.0"
+version = "1.0.1"
 description = "Self-hosted MCP server for web search and page fetching"
 readme = "README.md"
 authors = [
