@@ -12,7 +12,41 @@ from sagashi.config import ConfigError, load_config
 from sagashi.fetcher import is_blocked_url, is_reddit_url
 from sagashi.providers.uruky import UrukyProvider
 from sagashi.reddit import RedditError
-from sagashi.rerank import lexical_score, rerank
+from sagashi.rerank import lexical_score, rerank, rerank_results
+from sagashi.reranker_client import RerankerClient, RerankerClientError
+
+
+class FakeTransport:
+    """Duck-typed transport recording the last request."""
+
+    def __init__(
+        self,
+        payload: dict[str, object] | None = None,
+        status_code: int = 200,
+        exception: Exception | None = None,
+    ) -> None:
+        self.payload = payload
+        self.status_code = status_code
+        self.exception = exception
+        self.last_request: dict[str, object] = {}
+        self.last_headers: dict[str, str] = {}
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        self.last_request = {"url": url, "json": json}
+        self.last_headers = dict(headers or {})
+        if self.exception is not None:
+            raise self.exception
+        if self.status_code != 200:
+            return httpx.Response(
+                status_code=self.status_code, text="reranker unavailable"
+            )
+        return httpx.Response(status_code=200, json=self.payload or {})
 
 
 class TestConfig:
@@ -522,6 +556,184 @@ class TestRerank:
             body_of=lambda r: "",
         )
         assert ranked == ["first", "second", "third"]
+
+
+class TestRerankerClient:
+    """Tests for the llama-server /v1/rerank client."""
+
+    URL = "http://reranker.test:9093/v1/rerank"
+
+    @staticmethod
+    def _client(
+        transport: object, token: str | None = None, timeout: float = 120.0
+    ) -> RerankerClient:
+        return RerankerClient(
+            TestRerankerClient.URL, token, transport=transport, timeout=timeout
+        )
+
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        """A well-formed response returns one result per document."""
+        transport = FakeTransport(
+            payload={
+                "results": [
+                    {"index": 2, "relevance_score": -1.0},
+                    {"index": 0, "relevance_score": -5.6},
+                    {"index": 1, "relevance_score": 0.4},
+                ]
+            }
+        )
+        results = await self._client(transport).rerank("q", ["a", "b", "c"])
+        assert [(r.index, r.score) for r in results] == [
+            (2, -1.0),
+            (0, -5.6),
+            (1, 0.4),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_request_body_and_bearer_token(self) -> None:
+        """The body carries model/query/documents; a token sets the header."""
+        transport = FakeTransport(
+            payload={"results": [{"index": 0, "relevance_score": 1.0}]}
+        )
+        await self._client(transport, token="secret").rerank("best keyboard", ["doc"])
+        assert transport.last_request["url"] == self.URL
+        assert transport.last_headers == {"Authorization": "Bearer secret"}
+        assert transport.last_request["json"] == {
+            "model": "reranker",
+            "query": "best keyboard",
+            "documents": ["doc"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_missing_results_key(self) -> None:
+        """A response without a results list is an integrity failure."""
+        with pytest.raises(RerankerClientError, match="missing 'results'"):
+            await self._client(FakeTransport(payload={"unexpected": True})).rerank(
+                "q", ["a"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_index_rejected(self) -> None:
+        """Duplicate indices are an integrity failure, not a silent drop."""
+        transport = FakeTransport(
+            payload={
+                "results": [
+                    {"index": 0, "relevance_score": 1.0},
+                    {"index": 0, "relevance_score": 2.0},
+                ]
+            }
+        )
+        with pytest.raises(RerankerClientError, match="duplicate index 0"):
+            await self._client(transport).rerank("q", ["a", "b"])
+
+    @pytest.mark.asyncio
+    async def test_wrong_result_count_rejected(self) -> None:
+        """Fewer results than documents is an integrity failure."""
+        transport = FakeTransport(
+            payload={"results": [{"index": 0, "relevance_score": 1.0}]}
+        )
+        with pytest.raises(RerankerClientError, match="expected 2 results, got 1"):
+            await self._client(transport).rerank("q", ["a", "b"])
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_score_rejected(self) -> None:
+        """A non-numeric relevance_score is rejected."""
+        transport = FakeTransport(
+            payload={"results": [{"index": 0, "relevance_score": "high"}]}
+        )
+        with pytest.raises(RerankerClientError, match="non-numeric relevance_score"):
+            await self._client(transport).rerank("q", ["a"])
+
+    @pytest.mark.asyncio
+    async def test_http_error_propagates(self) -> None:
+        """Transport failures raise RerankerClientError."""
+        transport = FakeTransport(exception=httpx.ConnectError("connection refused"))
+        with pytest.raises(RerankerClientError, match="rerank request failed"):
+            await self._client(transport).rerank("q", ["a"])
+
+    @pytest.mark.asyncio
+    async def test_http_500_propagates(self) -> None:
+        """Non-200 responses raise RerankerClientError."""
+        transport = FakeTransport(status_code=500)
+        with pytest.raises(RerankerClientError, match="HTTP 500"):
+            await self._client(transport).rerank("q", ["a"])
+
+
+class TestRerankResults:
+    """Tests for the endpoint-vs-lexical rerank dispatcher."""
+
+    URL = "http://reranker.test:9093/v1/rerank"
+
+    @pytest.mark.asyncio
+    async def test_no_url_falls_back_to_lexical(self) -> None:
+        """Without a reranker URL the lexical scorer is used."""
+        results = ["Cooking pasta", "Keyboard review"]
+        ranked = await rerank_results(
+            "keyboard",
+            results,
+            title_of=lambda r: r,
+            body_of=lambda r: "",
+            reranker_url=None,
+        )
+        assert ranked == ["Keyboard review", "Cooking pasta"]
+
+    @pytest.mark.asyncio
+    async def test_endpoint_orders_by_relevance_score(
+        self, httpx_mock: HTTPXMock
+    ) -> None:
+        """With a URL, results are ordered by the endpoint's scores."""
+        httpx_mock.add_response(
+            url=self.URL,
+            json={
+                "results": [
+                    {"index": 1, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": -3.2},
+                    {"index": 2, "relevance_score": 0.9},
+                ]
+            },
+        )
+        results = ["first", "second", "third"]
+        ranked = await rerank_results(
+            "q",
+            results,
+            title_of=lambda r: r,
+            body_of=lambda r: "",
+            reranker_url=self.URL,
+        )
+        # second/third tie at 0.9 — stable sort keeps provider order
+        assert ranked == ["second", "third", "first"]
+
+    @pytest.mark.asyncio
+    async def test_endpoint_receives_title_and_body_documents(
+        self, httpx_mock: HTTPXMock
+    ) -> None:
+        """Each document is the title and body joined with a blank line."""
+        httpx_mock.add_response(
+            url=self.URL, json={"results": [{"index": 0, "relevance_score": 0.0}]}
+        )
+        await rerank_results(
+            "q",
+            ["only"],
+            title_of=lambda r: r,
+            body_of=lambda r: "",
+            reranker_url=self.URL,
+        )
+        sent = httpx_mock.get_requests()[-1]
+        assert b'"documents":["only\\n\\n"]' in sent.read()
+
+    @pytest.mark.asyncio
+    async def test_endpoint_error_propagates(self, httpx_mock: HTTPXMock) -> None:
+        """Reranker failures propagate — no silent fallback to lexical."""
+        httpx_mock.add_response(url=self.URL, status_code=500, text="boom")
+        with pytest.raises(RerankerClientError):
+            await rerank_results(
+                "q",
+                ["only"],
+                title_of=lambda r: r,
+                body_of=lambda r: "",
+                reranker_url=self.URL,
+            )
 
 
 class TestRedditParameterClamping:
@@ -1428,3 +1640,246 @@ class TestToolBackwardCompatibility:
         assert _clamp(0, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == REDDIT_LIMIT_MIN
         # Too large should be clamped down
         assert _clamp(100, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == REDDIT_LIMIT_MAX
+
+
+class TestPickEnglishLang:
+    """Tests for the caption-track selection logic."""
+
+    def test_prefers_manual_en(self) -> None:
+        """Manual 'en' beats auto-generated and other languages."""
+        from sagashi.youtube import pick_english_lang
+
+        info = {
+            "subtitles": {"de": {}, "en": {}},
+            "automatic_captions": {"en": {}, "en-GB": {}},
+        }
+        assert pick_english_lang(info) == ("en", False)
+
+    def test_prefers_manual_en_variants(self) -> None:
+        """Manual en-US/en-GB are tried in order before any other en*."""
+        from sagashi.youtube import pick_english_lang
+
+        info = {
+            "subtitles": {"en-GB": {}, "en-XX": {}, "en-US": {}},
+            "automatic_captions": {},
+        }
+        assert pick_english_lang(info) == ("en-US", False)
+
+    def test_falls_back_to_any_manual_en(self) -> None:
+        """Any manual en* track is used when the preferred ones are absent."""
+        from sagashi.youtube import pick_english_lang
+
+        info = {"subtitles": {"en-AU": {}, "de": {}}, "automatic_captions": {"en": {}}}
+        assert pick_english_lang(info) == ("en-AU", False)
+
+    def test_falls_back_to_auto_en(self) -> None:
+        """Auto-generated English is used when no manual captions exist."""
+        from sagashi.youtube import pick_english_lang
+
+        info = {"subtitles": {"de": {}}, "automatic_captions": {"en": {}}}
+        assert pick_english_lang(info) == ("en", True)
+
+    def test_falls_back_to_any_auto_en(self) -> None:
+        """Any auto en* track is used when preferred auto ones are absent."""
+        from sagashi.youtube import pick_english_lang
+
+        info = {"subtitles": {}, "automatic_captions": {"en-GB": {}}}
+        assert pick_english_lang(info) == ("en-GB", True)
+
+    def test_no_english_captions(self) -> None:
+        """None is returned when there are no English tracks at all."""
+        from sagashi.youtube import pick_english_lang
+
+        assert (
+            pick_english_lang(
+                {"subtitles": {"de": {}}, "automatic_captions": {"de": {}}}
+            )
+            is None
+        )
+
+
+class TestExtractTextFromJson3:
+    """Tests for json3 caption parsing."""
+
+    def test_strips_timing_and_formatting(self, tmp_path) -> None:
+        """Events/segments are joined into plain text, dropping newlines."""
+        import json
+
+        from sagashi.youtube import extract_text_from_json3
+
+        path = tmp_path / "video.json3"
+        path.write_text(
+            json.dumps(
+                {
+                    "events": [
+                        {"segs": [{"utf8": "Hello"}, {"utf8": "\n"}]},
+                        {"segs": [{"utf8": " world"}]},
+                        {"segs": []},
+                        {"no_segs": True},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert extract_text_from_json3(str(path)) == "Hello world"
+
+
+class TestFriendlyYtdlpError:
+    """Tests for yt-dlp error mapping to user-friendly messages."""
+
+    def test_bot_check(self) -> None:
+        """YouTube bot-checks point at the cookies file."""
+        from sagashi.youtube import _friendly_ytdlp_error
+
+        message = _friendly_ytdlp_error("Sign in to confirm you're not a bot")
+        assert "cookies.txt" in message
+        assert "YOUTUBE_COOKIES_FILE" in message
+
+    def test_no_subtitles(self) -> None:
+        """Missing captions get a clear message."""
+        from sagashi.youtube import _friendly_ytdlp_error
+
+        assert "No English captions" in _friendly_ytdlp_error("No subtitles found")
+
+    def test_private_video(self) -> None:
+        """Private videos get a clear message."""
+        from sagashi.youtube import _friendly_ytdlp_error
+
+        assert "private" in _friendly_ytdlp_error("This video is private")
+
+    def test_unknown_error_truncated(self) -> None:
+        """Unknown errors are passed through, truncated to 200 chars."""
+        from sagashi.youtube import _friendly_ytdlp_error
+
+        message = _friendly_ytdlp_error("x" * 500)
+        assert len(message) < 250
+
+
+class TestFetchYoutubeTranscript:
+    """Tests for the transcript fetcher (yt-dlp subprocess mocked out)."""
+
+    @staticmethod
+    def _mock_yt_dlp(monkeypatch: pytest.MonkeyPatch, calls: list[list[str]]) -> None:
+        """Replace the yt-dlp subprocess with a recorder."""
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            calls.append(cmd)
+            return object()
+
+        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+
+    @pytest.mark.asyncio
+    async def test_returns_title_and_transcript(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A successful fetch returns the title and plain-text transcript."""
+        import asyncio
+        import json
+
+        import sagashi.youtube as yt
+
+        calls: list[list[str]] = []
+        self._mock_yt_dlp(monkeypatch, calls)
+
+        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
+            return {"title": "Test Video", "subtitles": {"en": {}}}
+
+        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
+
+        json3 = {"events": [{"segs": [{"utf8": "spoken"}, {"utf8": " text"}]}]}
+
+        def fake_download(
+            url: str, lang: str, is_auto: bool, outdir: str, cookies_path: str | None
+        ) -> str:
+            path = f"{outdir}/video.json3"
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(json3, f)
+            return path
+
+        monkeypatch.setattr(yt, "_download_subtitle", fake_download)
+
+        result = await asyncio.to_thread(
+            yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
+        )
+        assert result == {"title": "Test Video", "transcript": "spoken text"}
+
+    @pytest.mark.asyncio
+    async def test_no_english_captions_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Videos without English captions raise a friendly error naming the video."""
+        import asyncio
+
+        import sagashi.youtube as yt
+
+        calls: list[list[str]] = []
+        self._mock_yt_dlp(monkeypatch, calls)
+
+        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
+            return {"title": "My Recipe Video", "subtitles": {}}
+
+        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
+
+        with pytest.raises(yt.YoutubeTranscriptError, match="My Recipe Video"):
+            await asyncio.to_thread(
+                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
+            )
+
+    @pytest.mark.asyncio
+    async def test_metadata_failure_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A yt-dlp metadata failure propagates its friendly error."""
+        import asyncio
+
+        import sagashi.youtube as yt
+
+        calls: list[list[str]] = []
+        self._mock_yt_dlp(monkeypatch, calls)
+
+        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
+            raise yt.YoutubeTranscriptError("yt-dlp failed: boom")
+
+        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
+
+        with pytest.raises(yt.YoutubeTranscriptError, match="yt-dlp failed"):
+            await asyncio.to_thread(
+                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
+            )
+
+    @pytest.mark.asyncio
+    async def test_missing_binary_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A missing yt-dlp binary raises a friendly error."""
+        import asyncio
+
+        import sagashi.youtube as yt
+
+        monkeypatch.setattr(yt.shutil, "which", lambda name: None)
+
+        with pytest.raises(yt.YoutubeTranscriptError, match="yt-dlp is not installed"):
+            await asyncio.to_thread(
+                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
+            )
+
+    @pytest.mark.asyncio
+    async def test_cookies_passed_to_yt_dlp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """When a cookies file exists, yt-dlp is invoked with --cookies."""
+        import subprocess
+
+        import sagashi.youtube as yt
+
+        cookies = tmp_path / "cookies.txt"
+        cookies.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], str(cookies))
+        assert "--cookies" in calls[-1]
+        assert str(cookies) in calls[-1]

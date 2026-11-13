@@ -1,6 +1,6 @@
 [project]
 name = "sagashi"
-version = "0.3.2"
+version = "1.0.0"
 description = "Self-hosted MCP server for web search and page fetching"
 readme = "README.md"
 authors = [
@@ -13,6 +13,7 @@ dependencies = [
     "fastmcp>=4.1.6",
     "httpx>=0.28.0",
     "python-dotenv>=1.2.4",
+    "yt-dlp>=2026.10.26",
 ]
 
 [project.scripts]

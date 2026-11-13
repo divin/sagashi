@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import textwrap
 from typing import Annotated, Any
 
@@ -16,7 +17,7 @@ from sagashi.config import Config, ConfigError, load_config
 from sagashi.fetcher import fetch_page
 from sagashi.providers import SearchProvider
 from sagashi.providers.uruky import UrukyProvider
-from sagashi.rerank import rerank
+from sagashi.rerank import RerankerClientError, rerank_results
 
 
 class CrawlerHolder:
@@ -88,11 +89,14 @@ def build_server() -> FastMCP:
             1. `web_search` - General web search via Uruky
             2. `search_reddit` - Search Reddit via the official API
             3. `fetch_page` - Fetch a web page's content
+            4. `fetch_youtube_transcript` - Fetch a YouTube video's title
+               and transcript
 
             Choose the right tool based on the user's request:
             - General search queries → `web_search`
             - Reddit-specific questions → `search_reddit`
             - Fetching specific URLs → `fetch_page`
+            - YouTube URLs → `fetch_youtube_transcript`
 
             When calling `fetch_page`, a reddit.com or redd.it URL is
             automatically served by the Reddit Source (official API): the
@@ -126,13 +130,18 @@ def build_server() -> FastMCP:
         if not results:
             return "No results found."
 
-        # Lexical rerank: boost results whose title/snippet match the query
-        results = rerank(
-            query,
-            results,
-            title_of=lambda r: r.title,
-            body_of=lambda r: r.snippet,
-        )
+        # Rerank: cross-encoder endpoint when configured, lexical fallback otherwise
+        try:
+            results = await rerank_results(
+                query,
+                results,
+                title_of=lambda r: r.title,
+                body_of=lambda r: r.snippet,
+                reranker_url=config.reranker_url,
+                reranker_token=config.reranker_token,
+            )
+        except RerankerClientError as e:
+            raise ToolError(f"Reranker failed: {e}") from e
 
         lines: list[str] = []
         for result in results:
@@ -238,6 +247,32 @@ def build_server() -> FastMCP:
         from sagashi.reddit import fetch_reddit_threads
 
         return await fetch_reddit_threads(items, comment_count=comment_count)
+
+    @mcp.tool(
+        name="fetch_youtube_transcript",
+        description="""Fetch a YouTube video's title and full transcript.
+
+        Use this when the user provides a YouTube URL and you need the spoken
+        content (captions) for analysis, summarization, quoting, or search.
+        Prefers manual English captions, falls back to auto-generated English.
+        Returns {title, transcript} where the transcript is plain text with
+        timing/formatting stripped. The server needs a cookies.txt (Netscape
+        format, exported while signed in to YouTube) at YOUTUBE_COOKIES_FILE
+        when YouTube bot-checks its IP.
+        """,
+    )
+    async def fetch_youtube_transcript_tool(url: str) -> dict[str, str]:
+        """Fetch a YouTube video's title and transcript as structured data."""
+        from sagashi.youtube import YoutubeTranscriptError, fetch_youtube_transcript
+
+        try:
+            return await asyncio.to_thread(
+                fetch_youtube_transcript,
+                url,
+                cookies_path=config.youtube_cookies_path,
+            )
+        except YoutubeTranscriptError as e:
+            raise ToolError(str(e)) from e
 
     @mcp.tool(
         name="fetch_page",

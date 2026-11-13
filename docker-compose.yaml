@@ -2,6 +2,7 @@
 #
 # Usage:
 #   cp example.env .env   # fill in the required credentials
+#   cp cookies.txt.example cookies.txt  # or export your own cookies.txt
 #   docker compose up -d
 #
 # Mirrors the production deployment in hako (services/agent/sagashi):
@@ -20,7 +21,16 @@ services:
       # Optional: set to require a bearer token on MCP endpoints.
       MCP_SEARCH_AUTH_TOKEN: ${MCP_SEARCH_AUTH_TOKEN:-}
       FETCH_MAX_CHARS: ${FETCH_MAX_CHARS:-40000}
+      # Path to the cookies.txt inside the container (see volumes below).
+      YOUTUBE_COOKIES_FILE: /app/cookies.txt
       TZ: Europe/Berlin
+    volumes:
+      # YouTube bot-checks the server's IP, so yt-dlp needs a cookies.txt
+      # (Netscape format) exported while signed in to YouTube. Export it
+      # once with a browser extension (e.g. "Get cookies.txt LOCALLY").
+      # If the file is missing, the transcript tool still works until
+      # YouTube starts bot-checking.
+      - ./cookies.txt:/app/cookies.txt:ro
     ports:
       - "${SAGASHI_PORT:-9092}:3000"
     healthcheck:

@@ -10,7 +10,7 @@ from asyncpraw import Reddit
 from asyncpraw.models import MoreComments
 
 from sagashi.config import Config, load_config
-from sagashi.rerank import rerank
+from sagashi.rerank import RerankerClientError, rerank_results
 
 
 class RedditError(Exception):
@@ -152,13 +152,18 @@ async def search_reddit(
     if not submissions:
         return "No Reddit results found."
 
-    # Lexical rerank: boost submissions whose title/selftext match the query
-    submissions = rerank(
-        query,
-        submissions,
-        title_of=lambda s: s.title,
-        body_of=lambda s: s.selftext or "",
-    )
+    # Rerank: cross-encoder endpoint when configured, lexical fallback otherwise
+    try:
+        submissions = await rerank_results(
+            query,
+            submissions,
+            title_of=lambda s: s.title,
+            body_of=lambda s: s.selftext or "",
+            reranker_url=config.reranker_url,
+            reranker_token=config.reranker_token,
+        )
+    except RerankerClientError as e:
+        raise RedditError(f"Reranker failed: {e}") from e
 
     lines: list[str] = []
     for submission in submissions:

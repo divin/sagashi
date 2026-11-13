@@ -1,6 +1,6 @@
 # Sagashi 🔍
 
-**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) five tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, subreddit listing, thread batch fetching, and clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
+**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) six tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, subreddit listing, thread batch fetching, clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai), and YouTube transcript fetching via [yt-dlp](https://github.com/yt-dlp/yt-dlp). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
 
 AI tools were used during development.
 
@@ -17,7 +17,7 @@ flowchart LR
     E -.->|"redd.it URLs"| D
 ```
 
-A single long-lived process serves five tools over Streamable HTTP. A lexical reranker boosts results whose titles and snippets actually match the query before they reach the agent. Reddit URLs are routed deterministically: `reddit.com` and `redd.it` links are both served through the official API (thread title, selftext, and top comments) — the crawler never touches Reddit (ToS compliance).
+A single long-lived process serves six tools over Streamable HTTP. Search results are reranked before they reach the agent: when `RERANKER_URL` is set, a llama-server `/v1/rerank` cross-encoder scores each result's title and body against the query; otherwise a built-in lexical term-overlap scorer is used as fallback. Reddit URLs are routed deterministically: `reddit.com` and `redd.it` links are both served through the official API (thread title, selftext, and top comments) — the crawler never touches Reddit (ToS compliance).
 
 ### Reddit Tools
 
@@ -29,6 +29,10 @@ Sagashi provides comprehensive Reddit integration via the official API:
 
 All Reddit operations use the official API only — no crawling, ensuring ToS compliance and fresh content.
 
+### YouTube Tool
+
+**`fetch_youtube_transcript`** fetches a YouTube video's title and full transcript by pulling captions through `yt-dlp`. It prefers manual English captions and falls back to auto-generated English; the transcript is plain text with timing/formatting stripped. YouTube bot-checks the server's IP, so a `cookies.txt` file (Netscape format) is required — export it once with a browser extension (e.g. "Get cookies.txt LOCALLY") while signed in to YouTube and mount it into the container at `YOUTUBE_COOKIES_FILE` (see the example compose file).
+
 ## 🛠️ Tools
 
 | Tool | Use for | Parameters |
@@ -38,6 +42,7 @@ All Reddit operations use the official API only — no crawling, ensuring ToS co
 | `list_subreddit_posts` | Browse posts from a specific subreddit | `subreddit` (required), `sort` (hot/new/top/rising/controversial, default `hot`), `time_filter` (day/week/month/year/all, default `all`), `limit` (1–100, default 10), `before`/`after` (for pagination/time windows) |
 | `fetch_reddit_threads` | Fetch multiple Reddit threads efficiently | `items` (required, list of IDs/URLs), `comment_count` (1–50, default 20) |
 | `fetch_page` | Fetching a specific URL | `url` (required), `max_chars` (≥ 1, capped at `FETCH_MAX_CHARS`, default `FETCH_MAX_CHARS`) |
+| `fetch_youtube_transcript` | Fetching a YouTube video's title and transcript | `url` (required) |
 
 All tools return compact Markdown sized for agent context windows; large pages are truncated with a visible marker at the configured limit. Parameters are clamped server-side, so agents can freely adjust them.
 

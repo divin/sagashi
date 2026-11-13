@@ -29,6 +29,9 @@ class Config:
     reddit_user_agent: str | None
     fetch_max_chars: int
     mcp_auth_token: str | None
+    reranker_url: str | None
+    reranker_token: str | None
+    youtube_cookies_path: str | None
 
     def validate(self) -> None:
         """Require Uruky and Reddit credentials (fail-fast)."""
@@ -65,4 +68,7 @@ def load_config() -> Config:
         reddit_user_agent=_get_env_var("REDDIT_USER_AGENT"),
         fetch_max_chars=max(1000, int(os.getenv("FETCH_MAX_CHARS", "40000"))),
         mcp_auth_token=_get_env_var("MCP_SEARCH_AUTH_TOKEN"),
+        reranker_url=_get_env_var("RERANKER_URL"),
+        reranker_token=_get_env_var("RERANKER_TOKEN"),
+        youtube_cookies_path=_get_env_var("YOUTUBE_COOKIES_FILE"),
     )

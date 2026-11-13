@@ -1,15 +1,24 @@
-"""Lexical reranking of search results.
+"""Reranking of search results.
 
-Pure-Python term-overlap scoring (no dependencies, no models):
-query terms are matched against each result's title and body, with
-title matches weighted higher. Results are sorted by score descending;
-ties keep their original (provider) order thanks to Python's stable sort.
+Two strategies behind one helper:
+
+- **Endpoint rerank** (when ``RERANKER_URL`` is configured): documents are
+  scored by a llama-server ``/v1/rerank`` cross-encoder against the search
+  query. Raw logits are only used for ordering, never exposed.
+- **Lexical rerank** (fallback, no dependencies, no models): pure-Python
+  term-overlap scoring; query terms are matched against each result's title
+  and body, with title matches weighted higher.
+
+Both sort by score descending; ties keep their original (provider) order
+thanks to Python's stable sort.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+
+from sagashi.reranker_client import RerankerClient, RerankerClientError
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -59,3 +68,38 @@ def rerank[T](
         key=lambda r: lexical_score(query, title_of(r), body_of(r)),
         reverse=True,
     )
+
+
+async def rerank_results[T](
+    query: str,
+    results: Sequence[T],
+    title_of: Callable[[T], str],
+    body_of: Callable[[T], str],
+    *,
+    reranker_url: str | None,
+    reranker_token: str | None = None,
+) -> list[T]:
+    """Return results ranked against the query, endpoint rerank when available.
+
+    With ``reranker_url`` set, each result's title and body are sent as one
+    document to the ``/v1/rerank`` endpoint and results are ordered by
+    relevance score descending (ties keep provider order via stable sort).
+    Without it, falls back to :func:`rerank` (lexical scoring).
+
+    Raises:
+        RerankerClientError: On transport failure or a malformed/incomplete
+            rerank response (propagated — a reranker outage is never silently
+            swallowed into a degraded ranking).
+    """
+    if reranker_url is None:
+        return rerank(query, results, title_of, body_of)
+
+    documents = [f"{title_of(r)}\n\n{body_of(r)}" for r in results]
+    client = RerankerClient(reranker_url, reranker_token)
+    scored = await client.rerank(query, documents)
+    scores = {result.index: result.score for result in scored}
+    order = sorted(range(len(results)), key=lambda i: -scores[i])
+    return [results[i] for i in order]
+
+
+__all__ = ["RerankerClientError", "lexical_score", "rerank", "rerank_results"]
