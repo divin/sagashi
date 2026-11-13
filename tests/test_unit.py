@@ -266,6 +266,24 @@ class TestToolParameterValidation:
         with pytest.raises(ToolError, match="one of: day, week, month, year"):
             _validate_recency("banana")
 
+    def test_language_valid_values(self) -> None:
+        """ISO 639-1 codes and Chinese variants pass and are normalized."""
+        from sagashi.server import _validate_language
+
+        assert _validate_language(None) is None
+        assert _validate_language("ja") == "JA"
+        assert _validate_language(" en ") == "EN"
+        assert _validate_language("zh-hant") == "ZH-HANT"
+
+    def test_language_invalid_value(self) -> None:
+        """Malformed language codes raise a ToolError."""
+        from fastmcp.exceptions import ToolError
+
+        from sagashi.server import _validate_language
+
+        with pytest.raises(ToolError, match="Invalid language"):
+            _validate_language("not-a-code")
+
     def test_max_chars_default_is_ceiling(self) -> None:
         """No max_chars means the configured ceiling."""
         from sagashi.server import _effective_max_chars
@@ -488,6 +506,19 @@ class TestUrukyProvider:
 
         assert results == []
 
+    @pytest.mark.asyncio
+    async def test_recency_and_language_params(self, httpx_mock: HTTPXMock) -> None:
+        """Recency maps to Uruky's single-letter `w` codes; language is uppercased."""
+        httpx_mock.add_response(
+            url="https://uruky.com/search?q=test&f=json&i=test-token&w=m&l=JA",
+            json={"results": []},
+        )
+
+        provider = UrukyProvider(token="test-token")
+        results = await provider.search("test", recency="month", language="ja")
+
+        assert results == []
+
 
 class TestRedditError:
     """Tests for Reddit-specific errors."""
@@ -545,6 +576,38 @@ class TestRerank:
         """Plurals match their singular form symmetrically."""
         assert lexical_score("keyboard", "Best Keyboards", "") == pytest.approx(1.0)
         assert lexical_score("keyboards", "Best Keyboard", "") == pytest.approx(1.0)
+
+    def test_cjk_title_match(self) -> None:
+        """CJK query terms match titles as substrings."""
+        # "日本の" has its edge particle stripped, so "日本" matches.
+        score = lexical_score("日本のGDP", "日本の経済", "GDP は...")
+        # 日本 title hit (2.0) + gdp body hit (1.0) / (2.0 * (1 + 1))
+        assert score == pytest.approx(0.75)
+
+    def test_cjk_body_match(self) -> None:
+        """CJK query terms matching only the body score half."""
+        score = lexical_score("順位", "世界の経済", "GDPランキングの順位について")
+        # 順位 body hit (1.0) / 2.0
+        assert score == pytest.approx(0.5)
+
+    def test_cjk_no_match_scores_zero(self) -> None:
+        """A result matching no CJK term scores 0."""
+        assert lexical_score("日本のGDP", "フランス料理", "パリのレストラン") == 0.0
+
+    def test_cjk_rerank_boosts_relevant(self) -> None:
+        """Relevant Japanese results rank above junk matching only one term."""
+        results = [
+            {"title": "日本", "body": "日本の国についての基本情報"},
+            {"title": "世界GDPランキング 2025", "body": "日本は3位、GDP統計と順位"},
+            {"title": "日本のアンテナ会社", "body": "暮らしと社会インフラ"},
+        ]
+        ranked = rerank(
+            "日本のGDP 2025年 順位",
+            results,
+            title_of=lambda r: r["title"],
+            body_of=lambda r: r["body"],
+        )
+        assert ranked[0]["title"] == "世界GDPランキング 2025"
 
     def test_rerank_is_stable_on_ties(self) -> None:
         """Equal scores keep the provider's original order."""

@@ -20,7 +20,10 @@ class SearchProvider(Protocol):
     """Protocol for search provider adapters."""
 
     async def search(
-        self, query: str, recency: str | None = None
+        self,
+        query: str,
+        recency: str | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
         """Search the web and return results."""
         ...

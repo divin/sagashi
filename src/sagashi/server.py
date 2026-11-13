@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import textwrap
 from typing import Annotated, Any
 
@@ -66,6 +67,23 @@ def _validate_recency(recency: str | None) -> None:
         )
 
 
+# Uruky's `l` parameter: uppercase ISO 639-1 code, or ZH-HANT / ZH-HANS.
+_LANG_RE = re.compile(r"^[A-Z]{2}(-[A-Z]{2,4})?$")
+
+
+def _validate_language(language: str | None) -> str | None:
+    """Normalize and validate a language filter, or None."""
+    if language is None:
+        return None
+    normalized = language.strip().upper()
+    if not _LANG_RE.match(normalized):
+        raise ToolError(
+            f"Invalid language: {language!r}. Use an ISO 639-1 code "
+            "(e.g. EN, JA, DE) or ZH-HANT / ZH-HANS."
+        )
+    return normalized
+
+
 def _effective_max_chars(max_chars: int | None, ceiling: int) -> int:
     """Resolve the requested truncation against the configured ceiling."""
     if max_chars is not None and max_chars < 1:
@@ -120,16 +138,20 @@ def build_server() -> FastMCP:
 
         Use this for general web search queries. Returns a compact Markdown list
         of search results with title, URL, snippet, and date.
-        Optional param: recency - one of day, week, month, year.
+        Optional params: recency - one of day, week, month, year.
+        language - ISO 639-1 code (e.g. EN, JA, DE) or ZH-HANT / ZH-HANS to
+        filter results by language; use it for non-English queries.
         """,
     )
     async def web_search(
         query: str,
         recency: str | None = None,
+        language: str | None = None,
     ) -> str:
         """Search the web and return results as Markdown."""
         _validate_recency(recency)
-        results = await provider.search(query, recency=recency)
+        language = _validate_language(language)
+        results = await provider.search(query, recency=recency, language=language)
         if not results:
             return "No results found."
 

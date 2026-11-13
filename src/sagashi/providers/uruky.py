@@ -8,6 +8,10 @@ import httpx
 
 from sagashi.providers import SearchProvider, SearchResult
 
+# Uruky's `w` parameter takes single-letter codes (d/w/m/y), a YYYY-MM-DD
+# date, or "a" for anytime — not the spelled-out values exposed by the tool.
+_RECENCY_CODES = {"day": "d", "week": "w", "month": "m", "year": "y"}
+
 
 class UrukyProvider(SearchProvider):
     """Uruky search provider adapter."""
@@ -18,12 +22,18 @@ class UrukyProvider(SearchProvider):
 
     @override
     async def search(
-        self, query: str, recency: str | None = None
+        self,
+        query: str,
+        recency: str | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
         """Search via Uruky."""
         params: dict[str, str] = {"q": query, "f": "json", "i": self._token}
         if recency:
-            params["w"] = recency
+            code = _RECENCY_CODES.get(recency, recency)
+            params["w"] = code
+        if language:
+            params["l"] = language.upper()
 
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.get(self._base_url, params=params)
