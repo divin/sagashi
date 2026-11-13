@@ -1889,6 +1889,47 @@ class TestFetchYoutubeTranscript:
             return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
 
         monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+        monkeypatch.setattr(yt.shutil, "which", lambda name: name == "yt-dlp")
         yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], str(cookies))
         assert "--cookies" in calls[-1]
         assert str(cookies) in calls[-1]
+
+    @pytest.mark.asyncio
+    async def test_js_runtime_node_used_when_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """yt-dlp is pointed at node when it is on PATH."""
+        import subprocess
+
+        import sagashi.youtube as yt
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+        monkeypatch.setattr(yt.shutil, "which", lambda name: name in ("yt-dlp", "node"))
+        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], None)
+        assert calls[-1][1:4] == ["--no-warnings", "--js-runtimes", "node"]
+
+    @pytest.mark.asyncio
+    async def test_no_js_runtime_arg_without_node(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No --js-runtimes flag when node is missing (deno default applies)."""
+        import subprocess
+
+        import sagashi.youtube as yt
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+        monkeypatch.setattr(yt.shutil, "which", lambda name: name == "yt-dlp")
+        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], None)
+        assert "--js-runtimes" not in calls[-1]

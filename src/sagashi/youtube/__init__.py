@@ -66,9 +66,22 @@ def _friendly_ytdlp_error(stderr: str) -> str:
     return "yt-dlp failed: " + stderr.strip()[:200]
 
 
+def _js_runtime_args() -> list[str]:
+    """Pick an available JavaScript runtime for yt-dlp, if any.
+
+    yt-dlp's YouTube extraction expects a JS runtime; only deno is enabled
+    by default, so point it at node (bundled in the Docker image) when
+    present. Without any runtime extraction is deprecated and some formats
+    may be missing.
+    """
+    if shutil.which("node"):
+        return ["--js-runtimes", "node"]
+    return []
+
+
 def _run_yt_dlp(url: str, extra_args: list[str], cookies_path: str | None) -> str:
     """Run yt-dlp and return stdout; raise a friendly error on failure."""
-    cmd = [_yt_dlp(), "--no-warnings"]
+    cmd = [_yt_dlp(), "--no-warnings", *_js_runtime_args()]
     if cookies_path and os.path.exists(cookies_path):
         cmd += ["--cookies", cookies_path]
     cmd += extra_args + [url]
