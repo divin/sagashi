@@ -7,9 +7,11 @@ FROM python:3.12-slim
 RUN useradd --create-home --shell /bin/bash appuser
 
 # Install system dependencies for Chromium and Playwright
+# git is needed by `uv sync` to fetch the git-pinned supadata dependency
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
+    git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends \
     nodejs \
