@@ -1705,140 +1705,73 @@ class TestToolBackwardCompatibility:
         assert _clamp(100, REDDIT_LIMIT_MIN, REDDIT_LIMIT_MAX) == REDDIT_LIMIT_MAX
 
 
-class TestPickEnglishLang:
-    """Tests for the caption-track selection logic."""
+class FakeSupadataClient:
+    """Duck-typed Supadata client returning canned responses."""
 
-    def test_prefers_manual_en(self) -> None:
-        """Manual 'en' beats auto-generated and other languages."""
-        from sagashi.youtube import pick_english_lang
+    def __init__(self, api_key: str | None = None) -> None:
+        self.api_key = api_key
+        self.metadata_calls: list[str] = []
+        self.transcript_calls: list[str] = []
+        self.job_status_calls: list[str] = []
+        self.metadata_result: object = None
+        self.metadata_error: Exception | None = None
+        self.transcript_result: object = None
+        self.job_results: list[object] = []
+        self.transcript = FakeSupadataTranscriptNamespace(self)
 
-        info = {
-            "subtitles": {"de": {}, "en": {}},
-            "automatic_captions": {"en": {}, "en-GB": {}},
-        }
-        assert pick_english_lang(info) == ("en", False)
-
-    def test_prefers_manual_en_variants(self) -> None:
-        """Manual en-US/en-GB are tried in order before any other en*."""
-        from sagashi.youtube import pick_english_lang
-
-        info = {
-            "subtitles": {"en-GB": {}, "en-XX": {}, "en-US": {}},
-            "automatic_captions": {},
-        }
-        assert pick_english_lang(info) == ("en-US", False)
-
-    def test_falls_back_to_any_manual_en(self) -> None:
-        """Any manual en* track is used when the preferred ones are absent."""
-        from sagashi.youtube import pick_english_lang
-
-        info = {"subtitles": {"en-AU": {}, "de": {}}, "automatic_captions": {"en": {}}}
-        assert pick_english_lang(info) == ("en-AU", False)
-
-    def test_falls_back_to_auto_en(self) -> None:
-        """Auto-generated English is used when no manual captions exist."""
-        from sagashi.youtube import pick_english_lang
-
-        info = {"subtitles": {"de": {}}, "automatic_captions": {"en": {}}}
-        assert pick_english_lang(info) == ("en", True)
-
-    def test_falls_back_to_any_auto_en(self) -> None:
-        """Any auto en* track is used when preferred auto ones are absent."""
-        from sagashi.youtube import pick_english_lang
-
-        info = {"subtitles": {}, "automatic_captions": {"en-GB": {}}}
-        assert pick_english_lang(info) == ("en-GB", True)
-
-    def test_no_english_captions(self) -> None:
-        """None is returned when there are no English tracks at all."""
-        from sagashi.youtube import pick_english_lang
-
-        assert (
-            pick_english_lang(
-                {"subtitles": {"de": {}}, "automatic_captions": {"de": {}}}
-            )
-            is None
-        )
+    def metadata(self, url: str) -> object:
+        self.metadata_calls.append(url)
+        if self.metadata_error is not None:
+            raise self.metadata_error
+        return self.metadata_result
 
 
-class TestExtractTextFromJson3:
-    """Tests for json3 caption parsing."""
+class FakeSupadataTranscriptNamespace:
+    """Duck-typed supadata.transcript namespace recording calls."""
 
-    def test_strips_timing_and_formatting(self, tmp_path) -> None:
-        """Events/segments are joined into plain text, dropping newlines."""
-        import json
+    def __init__(self, client: FakeSupadataClient) -> None:
+        self._client = client
 
-        from sagashi.youtube import extract_text_from_json3
+    def __call__(
+        self,
+        url: str,
+        lang: str | None = None,
+        text: bool = False,
+        mode: str = "auto",
+    ) -> object:
+        self._client.transcript_calls.append(url)
+        if isinstance(self._client.transcript_result, Exception):
+            raise self._client.transcript_result
+        return self._client.transcript_result
 
-        path = tmp_path / "video.json3"
-        path.write_text(
-            json.dumps(
-                {
-                    "events": [
-                        {"segs": [{"utf8": "Hello"}, {"utf8": "\n"}]},
-                        {"segs": [{"utf8": " world"}]},
-                        {"segs": []},
-                        {"no_segs": True},
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        assert extract_text_from_json3(str(path)) == "Hello world"
-
-
-class TestFriendlyYtdlpError:
-    """Tests for yt-dlp error mapping to user-friendly messages."""
-
-    def test_bot_check(self) -> None:
-        """YouTube bot-checks point at the cookies file."""
-        from sagashi.youtube import _friendly_ytdlp_error
-
-        message = _friendly_ytdlp_error("Sign in to confirm you're not a bot")
-        assert "cookies.txt" in message
-        assert "YOUTUBE_COOKIES_FILE" in message
-
-    def test_read_only_cookies(self) -> None:
-        """A read-only cookies mount gets an actionable message."""
-        from sagashi.youtube import _friendly_ytdlp_error
-
-        message = _friendly_ytdlp_error(
-            "OSError: [Errno 30] Read-only file system: '/app/cookies.txt'"
-        )
-        assert "read-write" in message
-
-    def test_no_subtitles(self) -> None:
-        """Missing captions get a clear message."""
-        from sagashi.youtube import _friendly_ytdlp_error
-
-        assert "No English captions" in _friendly_ytdlp_error("No subtitles found")
-
-    def test_private_video(self) -> None:
-        """Private videos get a clear message."""
-        from sagashi.youtube import _friendly_ytdlp_error
-
-        assert "private" in _friendly_ytdlp_error("This video is private")
-
-    def test_unknown_error_truncated(self) -> None:
-        """Unknown errors are passed through, truncated to 200 chars."""
-        from sagashi.youtube import _friendly_ytdlp_error
-
-        message = _friendly_ytdlp_error("x" * 500)
-        assert len(message) < 250
+    def get_job_status(self, job_id: str) -> object:
+        self._client.job_status_calls.append(job_id)
+        return self._client.job_results.pop(0)
 
 
 class TestFetchYoutubeTranscript:
-    """Tests for the transcript fetcher (yt-dlp subprocess mocked out)."""
+    """Tests for the Supadata-backed transcript fetcher (client faked)."""
+
+    URL = "https://www.youtube.com/watch?v=abc"
 
     @staticmethod
-    def _mock_yt_dlp(monkeypatch: pytest.MonkeyPatch, calls: list[list[str]]) -> None:
-        """Replace the yt-dlp subprocess with a recorder."""
+    def _install_client(
+        monkeypatch: pytest.MonkeyPatch, client: FakeSupadataClient
+    ) -> list[str]:
+        """Make sagashi.youtube.Supadata return the given fake client."""
+        received: list[str] = []
 
-        def fake_run(cmd: list[str], **kwargs: object) -> object:
-            calls.append(cmd)
-            return object()
+        def fake_supadata(api_key: str | None = None) -> FakeSupadataClient:
+            received.append(api_key or "")
+            return client
 
-        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
+        monkeypatch.setattr("sagashi.youtube.Supadata", fake_supadata)
+        return received
+
+    @staticmethod
+    def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Neutralize the polling delay in job-polling tests."""
+        monkeypatch.setattr("sagashi.youtube.time.sleep", lambda _seconds: None)
 
     @pytest.mark.asyncio
     async def test_returns_title_and_transcript(
@@ -1846,153 +1779,295 @@ class TestFetchYoutubeTranscript:
     ) -> None:
         """A successful fetch returns the title and plain-text transcript."""
         import asyncio
-        import json
+
+        from supadata.types import Metadata, Transcript
 
         import sagashi.youtube as yt
 
-        calls: list[list[str]] = []
-        self._mock_yt_dlp(monkeypatch, calls)
-
-        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
-            return {"title": "Test Video", "subtitles": {"en": {}}}
-
-        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
-
-        json3 = {"events": [{"segs": [{"utf8": "spoken"}, {"utf8": " text"}]}]}
-
-        def fake_download(
-            url: str, lang: str, is_auto: bool, outdir: str, cookies_path: str | None
-        ) -> str:
-            path = f"{outdir}/video.json3"
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(json3, f)
-            return path
-
-        monkeypatch.setattr(yt, "_download_subtitle", fake_download)
+        client = FakeSupadataClient()
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="Test Video"
+        )
+        client.transcript_result = Transcript(content="spoken text", lang="en")
+        self._install_client(monkeypatch, client)
 
         result = await asyncio.to_thread(
-            yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
+            yt.fetch_youtube_transcript, self.URL, "sk-test"
         )
+
         assert result == {"title": "Test Video", "transcript": "spoken text"}
+        assert client.metadata_calls == [self.URL]
+        assert client.transcript_calls == [self.URL]
 
     @pytest.mark.asyncio
-    async def test_no_english_captions_raises(
+    async def test_chunked_transcript_is_joined(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Videos without English captions raise a friendly error naming the video."""
+        """Timestamped chunk lists are joined into one plain-text string."""
+        import asyncio
+
+        from supadata.types import Metadata, Transcript, TranscriptChunk
+
+        import sagashi.youtube as yt
+
+        client = FakeSupadataClient()
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="Test Video"
+        )
+        client.transcript_result = Transcript(
+            content=[
+                TranscriptChunk(text="hello "),
+                TranscriptChunk(text="world"),
+            ]
+        )
+        self._install_client(monkeypatch, client)
+
+        result = await asyncio.to_thread(
+            yt.fetch_youtube_transcript, self.URL, "sk-test"
+        )
+        assert result == {"title": "Test Video", "transcript": "hello world"}
+
+    @pytest.mark.asyncio
+    async def test_metadata_failure_still_fetches_transcript(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A metadata failure degrades the title, not the whole fetch."""
+        import asyncio
+
+        from supadata import SupadataError
+        from supadata.types import Transcript
+
+        import sagashi.youtube as yt
+
+        client = FakeSupadataClient()
+        client.metadata_error = SupadataError(
+            error="upstream-error", message="boom", details=""
+        )
+        client.transcript_result = Transcript(content="spoken text", lang="en")
+        self._install_client(monkeypatch, client)
+
+        result = await asyncio.to_thread(
+            yt.fetch_youtube_transcript, self.URL, "sk-test"
+        )
+        assert result == {"title": "Unknown_Title", "transcript": "spoken text"}
+
+    @pytest.mark.asyncio
+    async def test_async_job_is_polled_until_complete(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A queued job is polled until it completes, then its result is used."""
+        import asyncio
+
+        from supadata.types import (
+            BatchJob,
+            Metadata,
+            Transcript,
+            TranscriptJobResult,
+        )
+
+        import sagashi.youtube as yt
+
+        client = FakeSupadataClient()
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="Test Video"
+        )
+        client.transcript_result = BatchJob(job_id="job-1")
+        client.job_results = [
+            TranscriptJobResult(status="queued"),
+            TranscriptJobResult(
+                status="completed", result=Transcript(content="done text")
+            ),
+        ]
+        self._install_client(monkeypatch, client)
+        self._no_sleep(monkeypatch)
+
+        result = await asyncio.to_thread(
+            yt.fetch_youtube_transcript, self.URL, "sk-test"
+        )
+        assert result == {"title": "Test Video", "transcript": "done text"}
+        assert client.job_status_calls == ["job-1", "job-1"]
+
+    @pytest.mark.asyncio
+    async def test_failed_job_raises_friendly_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed async job raises a friendly error."""
+        import asyncio
+
+        from supadata.types import BatchJob, TranscriptJobResult
+
+        import sagashi.youtube as yt
+
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
+
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = BatchJob(job_id="job-1")
+        client.job_results = [
+            TranscriptJobResult(status="failed", error={"message": "boom"})
+        ]
+        self._install_client(monkeypatch, client)
+        self._no_sleep(monkeypatch)
+
+        with pytest.raises(yt.YoutubeTranscriptError, match="failed"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
+
+    @pytest.mark.asyncio
+    async def test_missing_api_key_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A missing SUPADATA_API_KEY fails fast with a friendly error."""
         import asyncio
 
         import sagashi.youtube as yt
 
-        calls: list[list[str]] = []
-        self._mock_yt_dlp(monkeypatch, calls)
-
-        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
-            return {"title": "My Recipe Video", "subtitles": {}}
-
-        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
-
-        with pytest.raises(yt.YoutubeTranscriptError, match="My Recipe Video"):
-            await asyncio.to_thread(
-                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
-            )
+        with pytest.raises(yt.YoutubeTranscriptError, match="SUPADATA_API_KEY"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, None)
 
     @pytest.mark.asyncio
-    async def test_metadata_failure_raises(
+    async def test_video_not_found_maps_to_friendly_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A yt-dlp metadata failure propagates its friendly error."""
+        """A video-not-found API error gets an actionable message."""
         import asyncio
 
+        from supadata import SupadataError
+
         import sagashi.youtube as yt
 
-        calls: list[list[str]] = []
-        self._mock_yt_dlp(monkeypatch, calls)
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
 
-        def fake_metadata(url: str, cookies_path: str | None) -> dict[str, object]:
-            raise yt.YoutubeTranscriptError("yt-dlp failed: boom")
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = SupadataError(
+            error="video-not-found", message="Video not found", details=""
+        )
+        self._install_client(monkeypatch, client)
 
-        monkeypatch.setattr(yt, "_get_metadata", fake_metadata)
-
-        with pytest.raises(yt.YoutubeTranscriptError, match="yt-dlp failed"):
-            await asyncio.to_thread(
-                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
-            )
+        with pytest.raises(yt.YoutubeTranscriptError, match="unavailable"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
 
     @pytest.mark.asyncio
-    async def test_missing_binary_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A missing yt-dlp binary raises a friendly error."""
+    async def test_no_transcript_maps_to_captions_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A transcript-not-found API error points at missing captions."""
         import asyncio
 
-        import sagashi.youtube as yt
-
-        monkeypatch.setattr(yt.shutil, "which", lambda name: None)
-
-        with pytest.raises(yt.YoutubeTranscriptError, match="yt-dlp is not installed"):
-            await asyncio.to_thread(
-                yt.fetch_youtube_transcript, "https://youtube.com/watch?v=abc", None
-            )
-
-    @pytest.mark.asyncio
-    async def test_cookies_passed_to_yt_dlp(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
-    ) -> None:
-        """When a cookies file exists, yt-dlp is invoked with --cookies."""
-        import subprocess
+        from supadata import SupadataError
 
         import sagashi.youtube as yt
 
-        cookies = tmp_path / "cookies.txt"
-        cookies.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
 
-        calls: list[list[str]] = []
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = SupadataError(
+            error="transcript-not-found", message="No transcript", details=""
+        )
+        self._install_client(monkeypatch, client)
 
-        def fake_run(cmd: list[str], **kwargs: object) -> object:
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
-
-        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
-        monkeypatch.setattr(yt.shutil, "which", lambda name: name == "yt-dlp")
-        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], str(cookies))
-        assert "--cookies" in calls[-1]
-        assert str(cookies) in calls[-1]
+        with pytest.raises(yt.YoutubeTranscriptError, match="[Cc]aptions"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
 
     @pytest.mark.asyncio
-    async def test_js_runtime_node_used_when_available(
+    async def test_auth_error_maps_to_api_key_hint(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """yt-dlp is pointed at node when it is on PATH."""
-        import subprocess
+        """An authentication failure points at SUPADATA_API_KEY."""
+        import asyncio
+
+        from supadata import SupadataError
 
         import sagashi.youtube as yt
 
-        calls: list[list[str]] = []
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
 
-        def fake_run(cmd: list[str], **kwargs: object) -> object:
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = SupadataError(
+            error="invalid-api-key", message="Unauthorized", details=""
+        )
+        self._install_client(monkeypatch, client)
 
-        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
-        monkeypatch.setattr(yt.shutil, "which", lambda name: name in ("yt-dlp", "node"))
-        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], None)
-        assert calls[-1][1:4] == ["--no-warnings", "--js-runtimes", "node"]
+        with pytest.raises(yt.YoutubeTranscriptError, match="SUPADATA_API_KEY"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
 
     @pytest.mark.asyncio
-    async def test_no_js_runtime_arg_without_node(
+    async def test_rate_limit_maps_to_retry_hint(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No --js-runtimes flag when node is missing (deno default applies)."""
-        import subprocess
+        """A rate-limit error suggests trying again later."""
+        import asyncio
+
+        from supadata import SupadataError
 
         import sagashi.youtube as yt
 
-        calls: list[list[str]] = []
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
 
-        def fake_run(cmd: list[str], **kwargs: object) -> object:
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = SupadataError(
+            error="rate-limit-exceeded", message="Too many requests", details=""
+        )
+        self._install_client(monkeypatch, client)
 
-        monkeypatch.setattr("sagashi.youtube.subprocess.run", fake_run)
-        monkeypatch.setattr(yt.shutil, "which", lambda name: name == "yt-dlp")
-        yt._run_yt_dlp("https://youtube.com/watch?v=abc", ["--dump-json"], None)
-        assert "--js-runtimes" not in calls[-1]
+        with pytest.raises(yt.YoutubeTranscriptError, match="rate limit"):
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
+
+    @pytest.mark.asyncio
+    async def test_unknown_error_is_sanitized(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unknown API errors pass through truncated, with no stack context."""
+        import asyncio
+
+        from supadata import SupadataError
+
+        import sagashi.youtube as yt
+
+        client = FakeSupadataClient()
+        from supadata.types import Metadata
+
+        client.metadata_result = Metadata(
+            platform="youtube", type="video", id="abc", url=self.URL, title="T"
+        )
+        client.transcript_result = SupadataError(
+            error="unknown", message="x" * 500, details=""
+        )
+        self._install_client(monkeypatch, client)
+
+        with pytest.raises(yt.YoutubeTranscriptError) as excinfo:
+            await asyncio.to_thread(yt.fetch_youtube_transcript, self.URL, "sk-test")
+        assert len(str(excinfo.value)) < 300
+
+
+class TestSupadataConfig:
+    """Tests for the Supadata API key configuration."""
+
+    def test_supadata_api_key_loaded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SUPADATA_API_KEY is exposed on the config object."""
+        from sagashi.config import load_config
+
+        monkeypatch.setenv("SUPADATA_API_KEY", "sk-test")
+        config = load_config()
+        assert config.supadata_api_key == "sk-test"
+
+    def test_supadata_api_key_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An unset SUPADATA_API_KEY loads as None."""
+        from sagashi.config import load_config
+
+        monkeypatch.delenv("SUPADATA_API_KEY", raising=False)
+        config = load_config()
+        assert config.supadata_api_key is None

@@ -1,6 +1,6 @@
 # Sagashi 🔍
 
-**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) six tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, subreddit listing, thread batch fetching, clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai), and YouTube transcript fetching via [yt-dlp](https://github.com/yt-dlp/yt-dlp). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
+**Sagashi is a privacy-focused, self-hostable MCP (Model Context Protocol) server for web search, Reddit search, and page fetching.** It gives MCP-compatible agents (llama.cpp, Claude, Cursor, and others) six tools: web search via the [Uruky](https://uruky.com) API, Reddit search via the official Reddit API, subreddit listing, thread batch fetching, clean Markdown page fetching via [Crawl4AI](https://github.com/unclecode/crawl4ai), and YouTube transcript fetching via [Supadata](https://supadata.ai). Everything runs on your own host with your own API credentials; no queries or results are stored. The name comes from *sagashi* (捜し, “search”).
 
 AI tools were used during development.
 
@@ -31,7 +31,7 @@ All Reddit operations use the official API only — no crawling, ensuring ToS co
 
 ### YouTube Tool
 
-**`fetch_youtube_transcript`** fetches a YouTube video's title and full transcript by pulling captions through `yt-dlp`. It prefers manual English captions and falls back to auto-generated English; the transcript is plain text with timing/formatting stripped. YouTube bot-checks the server's IP, so a `cookies.txt` file (Netscape format) is required — export it once with a browser extension (e.g. "Get cookies.txt LOCALLY") while signed in to YouTube and mount it into the container at `YOUTUBE_COOKIES_FILE` (see the example compose file).
+**`fetch_youtube_transcript`** fetches a YouTube video's title and full transcript through the [Supadata](https://supadata.ai) API using the official [Python SDK](https://github.com/supadata-ai/py). It prefers manual English captions and falls back to auto-generated English; the transcript is plain text with timing/formatting stripped. A Supadata API key is required — get a free one at [supadata.ai](https://supadata.ai) and set it as `SUPADATA_API_KEY`.
 
 ## 🛠️ Tools
 

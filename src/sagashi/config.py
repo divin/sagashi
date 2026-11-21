@@ -31,7 +31,7 @@ class Config:
     mcp_auth_token: str | None
     reranker_url: str | None
     reranker_token: str | None
-    youtube_cookies_path: str | None
+    supadata_api_key: str | None
 
     def validate(self) -> None:
         """Require Uruky and Reddit credentials (fail-fast)."""
@@ -70,5 +70,5 @@ def load_config() -> Config:
         mcp_auth_token=_get_env_var("MCP_SEARCH_AUTH_TOKEN"),
         reranker_url=_get_env_var("RERANKER_URL"),
         reranker_token=_get_env_var("RERANKER_TOKEN"),
-        youtube_cookies_path=_get_env_var("YOUTUBE_COOKIES_FILE"),
+        supadata_api_key=_get_env_var("SUPADATA_API_KEY"),
     )

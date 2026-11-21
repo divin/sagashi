@@ -281,9 +281,8 @@ def build_server() -> FastMCP:
         content (captions) for analysis, summarization, quoting, or search.
         Prefers manual English captions, falls back to auto-generated English.
         Returns {title, transcript} where the transcript is plain text with
-        timing/formatting stripped. The server needs a cookies.txt (Netscape
-        format, exported while signed in to YouTube) at YOUTUBE_COOKIES_FILE
-        when YouTube bot-checks its IP.
+        timing/formatting stripped. Requires a Supadata API key
+        (SUPADATA_API_KEY, free at https://supadata.ai).
         """,
     )
     async def fetch_youtube_transcript_tool(url: str) -> dict[str, str]:
@@ -294,7 +293,7 @@ def build_server() -> FastMCP:
             return await asyncio.to_thread(
                 fetch_youtube_transcript,
                 url,
-                cookies_path=config.youtube_cookies_path,
+                api_key=config.supadata_api_key,
             )
         except YoutubeTranscriptError as e:
             logger.warning("fetch_youtube_transcript failed: %s", e)
